@@ -755,7 +755,7 @@
     if (!(state.focus.person === id)) h += `<button class="btn" data-act="focus">Centre the tree here</button>`;
     h += `<button class="btn primary" data-act="close">${state.editable ? 'Done' : 'Close'}</button>`;
     h += '</div>';
-    el.innerHTML = h;
+    el.innerHTML = `<div data-pid="${id}">${h}</div>`;
     $('#panel').hidden = false;
   }
 
@@ -1412,10 +1412,15 @@
         setFocus(id);
       }
     });
+    // A field can report its last edit just after the window switched to someone else
+    // (e.g. typing a name, then clicking a relative): always edit the field's own person.
+    const ownerOf = (el) => { const h = el.closest('[data-pid]'); return h ? h.dataset.pid : state.selected; };
+    const panelOpt = (el) => (el.isConnected ? {} : { panel: false });
     panel.addEventListener('input', (e) => {
       const f = e.target.dataset.f;
       if (!f || e.target.type === 'checkbox') return;
-      const id = state.selected, v = e.target.value;
+      const id = ownerOf(e.target), v = e.target.value;
+      if (!P(id)) return;
       mutate((t) => {
         const p = t.person(id);
         if (v.trim()) p[f] = f === 'notes' ? v : v.replace(/\s+/g, ' ').trimStart(); else delete p[f];
@@ -1423,13 +1428,15 @@
       }, { key: f + id, panel: false });
     });
     panel.addEventListener('change', (e) => {
-      const el = e.target, id = state.selected;
+      const el = e.target, id = ownerOf(e.target);
+      if (!P(id)) return;
+      const later = panelOpt(el);
       if (el.dataset.f === 'name' || el.dataset.f === 'birthName') {
         mutate((t) => { const p = t.person(id); if (p[el.dataset.f]) p[el.dataset.f] = p[el.dataset.f].trim(); }, { key: el.dataset.f + id, panel: false });
         return;
       }
       if (el.dataset.f === 'deceased') {
-        mutate((t) => { const p = t.person(id); if (el.checked) p.deceased = true; else delete p.deceased; });
+        mutate((t) => { const p = t.person(id); if (el.checked) p.deceased = true; else delete p.deceased; }, later);
         return;
       }
       if (el.dataset.date) {
@@ -1447,7 +1454,7 @@
         return;
       }
       if (el.dataset.uf === 'status') {
-        mutate((t) => { const u = t.union(el.dataset.u); if (!u) return; if (el.value) u.status = el.value; else delete u.status; });
+        mutate((t) => { const u = t.union(el.dataset.u); if (!u) return; if (el.value) u.status = el.value; else delete u.status; }, later);
         return;
       }
       if (el.dataset.udate) {
@@ -1460,6 +1467,7 @@
         return;
       }
       if (el.hasAttribute('data-move')) {
+        if (!el.isConnected) return;
         mutate((t) => t.moveChild(id, el.value));
       }
     });
