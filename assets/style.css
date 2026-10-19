@@ -214,7 +214,10 @@ body:not(.editing) .edit-only { display: none !important; }
 .set .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .15s; }
 .set input:checked + .sw { background: var(--accent); }
 .set input:checked + .sw::after { transform: translateX(14px); }
-.popover .seg.radius { margin: 0 10px 8px 10px; }
+.popover .radius-row { margin: 0 10px 10px 10px; }
+.popover .radius-row span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.popover .seg.radius { margin: 0; }
+.popover .seg.radius button { padding: 6px 0; }
 .tip {
   position: fixed; z-index: 25; pointer-events: none; background: var(--accent); color: #fff; border-radius: 10px;
   padding: 7px 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; font-size: 12px; max-width: 260px;

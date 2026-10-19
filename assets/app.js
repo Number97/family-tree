@@ -124,7 +124,7 @@
 
   // ---------- settings ----------
   const SETTINGS_KEY = 'familytree.settings';
-  const DEFAULTS = { focus: true, radius: 2, sizes: true, detail: true, hover: true, colors: true, smartHide: true, circle: false, improved: true };
+  const DEFAULTS = { focus: true, radius: 2, sizes: true, detail: true, hover: true, colors: true, smartHide: true, circle: false, improved: true, compact: true };
   function loadSettings() {
     let stored = null;
     try { stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (e) { /* storage unavailable */ }
@@ -207,7 +207,7 @@
   const ANIM_MS = 480;
   function layoutOpts() {
     const S = state.settings;
-    return { radius: S.focus ? S.radius : null, sizes: S.sizes, improved: S.improved };
+    return { radius: S.focus ? S.radius : null, sizes: S.sizes, improved: S.improved, compact: S.compact };
   }
   // opts.animate: cards glide from their old places; the anchor card stays where it is on screen.
   function render(anchorId, opts) {
@@ -1145,7 +1145,7 @@
     let h = '<div class="hd">Settings</div>';
     h += row('focus', 'Focus mode', 'Show the family around one person. Click a card to move there; click it again to open it.');
     if (S.focus) {
-      h += `<div class="seg radius">${[1, 2, 3].map((r) => `<button data-radius="${r}" class="${S.radius === r ? 'on' : ''}">${r} step${r > 1 ? 's' : ''}</button>`).join('')}</div>`;
+      h += `<div class="radius-row"><span>Steps around the focus</span><div class="seg radius">${[1, 2, 3, 4, 5, 6, 7].map((r) => `<button data-radius="${r}" class="${S.radius === r ? 'on' : ''}">${r}</button>`).join('')}</div></div>`;
     }
     h += row('sizes', 'Smaller further away', 'Cards shrink the more distant the relative.');
     h += row('detail', 'Less detail when zoomed out', 'First names, then just initials, as you zoom out.');
@@ -1153,6 +1153,7 @@
     h += row('colors', 'Colour each family', 'Every family\u2019s lines get their own colour.');
     h += row('smartHide', 'Hide-branch buttons (−)', 'Hide everyone who is only connected through one person.');
     h += row('improved', 'Fewer crossing lines', 'Rearranges families to reduce crossings.');
+    h += row('compact', 'Close gaps', 'Pull distant relatives in to fill empty stretches; their lines may bend.');
     h += row('circle', 'Circle layout', 'The tree as rings; scroll to turn it.');
     openPopover(h, rect, 'wide settings');
   }

@@ -5,13 +5,14 @@
   // Spacing tells the story: couples together stand close, couples who split up stand further
   // apart, siblings are close, half-siblings a little less, and separate families clearly apart.
   const CARD_W = 204, CARD_H = 64, ROW_GAP = 104;
-  const COUPLE_GAP = 30, EX_GAP = 84, SIB_GAP = 20, HALF_GAP = 34, GROUP_GAP = 72;
+  const COUPLE_GAP = 30, EX_GAP = 84, SIB_GAP = 20, HALF_GAP = 34, GROUP_GAP = 72, MAX_GAP = 200;
   const ROW_H = CARD_H + ROW_GAP;
 
   // focus: { union } or { person }.
   // view: { down: {unionId: bool}, up: {personId: bool},
   //         hide: {personId: { up: true, u: {unionId: true} }} }  (parts of a branch hidden with "−")
-  // opts: { radius: number|null (focus mode), sizes: bool (smaller further away), improved: bool (fewer crossings) }
+  // opts: { radius: number|null (focus mode), sizes: bool (smaller further away), improved: bool (fewer crossings),
+  //         compact: bool (close big gaps, letting distant relatives' lines bend) }
   function layout(tree, focus, view, opts) {
     opts = opts || {};
     const down = view.down || {}, upState = view.up || {}, hide = view.hide || {};
@@ -459,6 +460,144 @@
       }
     }
 
+    // Straight lines can leave big holes in a row (a family pinned above or below relatives
+    // far away). Close holes wider than about a card by sliding whole blocks towards the focus.
+    // People joined by a straight single line move together, so those lines never bend.
+    function closeGaps() {
+      const parent = {};
+      const find = (x) => { while (parent[x] !== undefined && parent[x] !== x) x = parent[x] = parent[parent[x]] ?? parent[x]; return x; };
+      const join = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+      for (const u of units) parent[u.id] = u.id;
+      for (const uid of visU) {
+        const kids = visChildren(uid);
+        const ps = tree.union(uid).partners.filter(vis);
+        if (kids.length !== 1 || !ps.length) continue;
+        const c = unionCenter(uid);
+        if (c != null && Math.abs(c - cx(kids[0])) < 1) join(unitOf[ps[0]].id, unitOf[kids[0]].id);
+      }
+      const center = rootPartners.filter(vis).reduce((acc, p) => acc + cx(p), 0) / Math.max(1, rootPartners.filter(vis).length);
+      const blockUnits = {};
+      for (const u of units) if (u.emitted) (blockUnits[find(u.id)] = blockUnits[find(u.id)] || []).push(u);
+      const neighbours = (u) => {
+        const r = rows[u.gen], i = r.indexOf(u);
+        return { left: i > 0 ? r[i - 1] : null, right: i + 1 < r.length ? r[i + 1] : null, gl: rowGaps[u.gen][i - 1] || 0, gr: rowGaps[u.gen][i] || 0 };
+      };
+      const blockMid = (blk) => { const us = blockUnits[blk]; return us.reduce((acc, u) => acc + ux[u.id] + unitW(u) / 2, 0) / us.length; };
+      // Families linking a block to the outside, and how far their lines are from straight.
+      const linksOf = {};
+      for (const blk of Object.keys(blockUnits)) {
+        const set = new Set();
+        for (const u of blockUnits[blk]) {
+          for (const uid of cu[u.id]) set.add(uid);
+          for (const m of u.members) { const pu = visParentUnion(m); if (pu) set.add(pu); }
+        }
+        linksOf[blk] = [...set].filter((uid) => tree.union(uid).partners.some(vis) && visChildren(uid).length);
+      }
+      const bend = (blk) => linksOf[blk].reduce((acc, uid) => acc + Math.abs(unionCenter(uid) - span(uid)), 0);
+      // Close family keeps straight lines; the further away, the more a line may bend to close a hole.
+      const tolerance = (blk) => {
+        const d = Math.min(...blockUnits[blk].flatMap((u) => u.members.map((m) => kd[m] ?? 9)));
+        return d <= 2 ? 0.5 : d === 3 ? 1.5 : Infinity;
+      };
+      // Everyone who has to move along when `blk` slides by d (neighbours too close on that side).
+      const pushSet = (blk, dir, d) => {
+        const set = new Set([blk]), queue = [blk];
+        while (queue.length) {
+          const x = queue.pop();
+          for (const u of blockUnits[x]) {
+            const n = neighbours(u), other = dir < 0 ? n.left : n.right;
+            if (!other) continue;
+            const ob = find(other.id);
+            if (set.has(ob)) continue;
+            const slack = dir < 0 ? ux[u.id] - (ux[other.id] + unitW(other) + n.gl) : ux[other.id] - (ux[u.id] + unitW(u) + n.gr);
+            if (slack < d - 0.5) { set.add(ob); queue.push(ob); }
+          }
+        }
+        return set;
+      };
+      const excessTotal = () => {
+        let t = 0;
+        for (const g of gens) {
+          const r = rows[g];
+          for (let i = 1; i < r.length; i++) {
+            const a2 = r[i - 1], b2 = r[i];
+            const k = Math.max(scaleOf(a2.members[a2.members.length - 1]), scaleOf(b2.members[0]));
+            const allowed = Math.max(rowGaps[g][i - 1] || 0, MAX_GAP * k);
+            t += Math.max(0, ux[b2.id] - (ux[a2.id] + unitW(a2)) - allowed);
+          }
+        }
+        return t;
+      };
+      // Slide a block (and whoever it pushes) by up to d. Keep the move only if the empty space
+      // really shrinks and no line bends more than the people involved allow.
+      const tryMove = (blk, dir, d) => {
+        for (const step of [d, d / 2, d / 4]) {
+          if (step <= 0.5) break;
+          const set = pushSet(blk, dir, step);
+          const tol = Math.min(...[...set].map(tolerance));
+          const links = new Set([...set].flatMap((x) => linksOf[x]));
+          const bendNow = () => [...links].reduce((acc, uid) => acc + Math.abs(unionCenter(uid) - span(uid)), 0);
+          const e0 = excessTotal(), b0 = bendNow();
+          for (const x of set) for (const u of blockUnits[x]) ux[u.id] += dir * step;
+          if (excessTotal() <= e0 - 0.5 * step && bendNow() - b0 <= tol * step) return step;
+          for (const x of set) for (const u of blockUnits[x]) ux[u.id] -= dir * step;
+        }
+        return 0;
+      };
+      for (let pass = 0; pass < 12; pass++) {
+        let moved = false;
+        for (const g of gens) {
+          const r = rows[g];
+          for (let i = 1; i < r.length; i++) {
+            const a = r[i - 1], b = r[i];
+            const ba = find(a.id), bb = find(b.id);
+            if (ba === bb) continue;
+            const gap = ux[b.id] - (ux[a.id] + unitW(a));
+            const k = Math.max(scaleOf(a.members[a.members.length - 1]), scaleOf(b.members[0]));
+            const allowed = Math.max(rowGaps[g][i - 1] || 0, MAX_GAP * k);
+            if (gap <= allowed + 0.5) continue;
+            // move the side further from the focus first (towards it), then the other side
+            const order = Math.abs(blockMid(bb) - center) >= Math.abs(blockMid(ba) - center) ? [[bb, -1], [ba, 1]] : [[ba, 1], [bb, -1]];
+            let excess = gap - allowed;
+            for (const [blk, dir] of order) {
+              if (excess <= 0.5) break;
+              const d = tryMove(blk, dir, excess);
+              if (d > 0.5) { excess -= d; moved = true; }
+            }
+          }
+        }
+        if (!moved) break;
+      }
+      // Holes that remain: if everyone on the far side is a distant relative (4+ steps away),
+      // slide that whole stretch of the row in. Their lines get an elbow; close family stays straight.
+      // With "close gaps" on, relatives 3+ steps away may move as far as needed; otherwise only
+      // those 4+ steps away, and never far from where their straight line would be.
+      const farFrom = opts.compact ? 3 : 4;
+      const far = (u) => u.members.every((m) => (kd[m] ?? 9) >= farFrom);
+      const moved0 = {}, budget = (u) => (opts.compact ? Infinity : 800 * scaleOf(u.members[0]) - Math.abs(moved0[u.id] || 0));
+      const slide = (list, d) => list.forEach((u) => { ux[u.id] += d; moved0[u.id] = (moved0[u.id] || 0) + d; });
+      for (const g of gens) {
+        const r = rows[g];
+        for (let pass = 0; pass < 2; pass++) {
+          for (let i = 1; i < r.length; i++) {
+            const a = r[i - 1], b = r[i];
+            const left = ux[a.id] + unitW(a), gap = ux[b.id] - left;
+            const k = Math.max(scaleOf(a.members[a.members.length - 1]), scaleOf(b.members[0]));
+            const allowed = Math.max(rowGaps[g][i - 1] || 0, MAX_GAP * k);
+            if (gap <= allowed + 0.5) continue;
+            const leftSide = r.slice(0, i), rightSide = r.slice(i);
+            if (left >= center && rightSide.every(far)) {
+              const d = Math.min(gap - allowed, ...rightSide.map(budget));
+              if (d > 0.5) slide(rightSide, -d);
+            } else if (ux[b.id] <= center && leftSide.every(far)) {
+              const d = Math.min(gap - allowed, ...leftSide.map(budget));
+              if (d > 0.5) slide(leftSide, d);
+            }
+          }
+        }
+      }
+    }
+
     // Put each group of siblings in the order of their parents above, so lines don't cross
     // (e.g. half-siblings from a father's other relationships end up under that relationship).
     const SIDE = { L: 0, C: 1, R: 2 };
@@ -576,6 +715,7 @@
     const crossingCount = opts.improved ? improve() : null;
     settle(120);
     straighten();
+    closeGaps();
 
     // ---- 5. output ----
     const nodes = {};
