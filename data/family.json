@@ -72,11 +72,39 @@
     },
     "pfpyg58": {
       "name": "Ernestine Ines Popovici",
-      "birth": "1991-10-15"
+      "birth": "1991-10-15",
+      "gender": "f"
     },
     "p651u0l": {
       "name": "Claudiu",
       "gender": "m"
+    },
+    "pcrytov": {
+      "name": "Hani Popovici",
+      "gender": "m"
+    },
+    "pxl1jah": {
+      "name": "Virgil Alexandru Popovici",
+      "gender": "f",
+      "birth": "2006-08-18"
+    },
+    "pzetnqc": {
+      "name": "Radu Dinu",
+      "gender": "m"
+    },
+    "phzf0w8": {
+      "name": "Ioana Mihaela Ruxandra Popovici",
+      "birth": "1991-10-26",
+      "gender": "f"
+    },
+    "p9bldvk": {
+      "name": "Alina",
+      "gender": "f"
+    },
+    "pkj8ew2": {
+      "name": "Ana Dinu",
+      "gender": "f",
+      "birth": "2006-08-17"
     }
   },
   "unions": {
@@ -149,14 +177,36 @@
         "pw653yc",
         "p2vfl96"
       ],
-      "children": []
+      "children": [
+        "pxl1jah"
+      ]
     },
     "u5xyei8": {
       "partners": [
         "pfpyg58",
         "p651u0l"
       ],
-      "children": []
+      "children": [
+        "pcrytov"
+      ]
+    },
+    "u1xxmv2": {
+      "partners": [
+        "p2vfl96",
+        "pzetnqc"
+      ],
+      "children": [
+        "phzf0w8"
+      ]
+    },
+    "uhpepem": {
+      "partners": [
+        "pzetnqc",
+        "p9bldvk"
+      ],
+      "children": [
+        "pkj8ew2"
+      ]
     }
   }
 }
