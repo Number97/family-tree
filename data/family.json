@@ -34,11 +34,26 @@
       "gender": "f",
       "deceased": true
     },
-    "pjllmxz": {
-      "name": "Corina Daniela Popovici",
-      "birthName": "Voineasa",
+    "pyhp0hj": {
+      "name": "Daniela Popovici",
+      "birthName": "Dobrescu",
       "gender": "f",
-      "birth": "1968-02-29"
+      "birth": "1967",
+      "deceased": true,
+      "death": "1999"
+    },
+    "pnca7fp": {
+      "name": "Ernest Popovici",
+      "deceased": true,
+      "gender": "m",
+      "birth": "1898"
+    },
+    "pgu710k": {
+      "name": "Emil Dobrescu",
+      "gender": "m",
+      "birth": "1939-09-29",
+      "deceased": true,
+      "death": "2026-09-27"
     }
   },
   "unions": {
@@ -54,7 +69,7 @@
     "u8g72d7": {
       "partners": [
         "pw653yc",
-        "pjllmxz"
+        "pyhp0hj"
       ],
       "children": [
         "p0"
@@ -79,6 +94,22 @@
       ],
       "children": [],
       "status": "married"
+    },
+    "u5l1wwo": {
+      "partners": [
+        "pnca7fp"
+      ],
+      "children": [
+        "pkdtqzj"
+      ]
+    },
+    "uvxb8wy": {
+      "partners": [
+        "pgu710k"
+      ],
+      "children": [
+        "pyhp0hj"
+      ]
     }
   }
 }
