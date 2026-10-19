@@ -1051,6 +1051,14 @@
       "name": "Maria Cucu",
       "gender": "f",
       "deceased": true
+    },
+    "pusmbul": {
+      "name": "Maria Enciu",
+      "gender": "f",
+      "birth": "1938",
+      "birthName": "Petrescu",
+      "death": "2012",
+      "deceased": true
     }
   },
   "unions": {
@@ -1854,6 +1862,13 @@
         "poxi9zq",
         "p1i4h85"
       ]
+    },
+    "ubgsmuw": {
+      "partners": [
+        "pdnc0c6",
+        "pusmbul"
+      ],
+      "children": []
     }
   }
 }
