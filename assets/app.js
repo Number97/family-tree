@@ -118,7 +118,7 @@
   function loadView() {
     try {
       const v = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
-      if (v && typeof v === 'object') state.view = { down: v.down || {}, up: v.up || {}, hide: v.hide || {}, reveal: v.reveal || {}, revealUp: v.revealUp || {} };
+      if (v && typeof v === 'object') state.view = { down: v.down || {}, up: v.up || {}, hide: v.hide || {}, reveal: v.reveal || {}, revealUp: v.revealUp || {}, expanded: !!v.expanded };
     } catch (e) { /* storage unavailable */ }
   }
 
@@ -594,10 +594,32 @@
     tip.style.top = Math.min(window.innerHeight - tip.offsetHeight - 8, ev.clientY + 14) + 'px';
   }
 
+  // ---------- expand all / tidy up ----------
+  function expandAll() {
+    const t = state.tree, all = (obj, v) => Object.fromEntries(Object.keys(obj).map((k) => [k, v]));
+    state.view = {
+      down: all(t.data.unions, false), up: all(t.data.people, false), hide: {},
+      reveal: all(t.data.unions, true), revealUp: all(t.data.people, true), expanded: true,
+    };
+    saveView();
+    closePopover();
+    render(null, { animate: true });
+    fitAll();
+  }
+  function tidyUp() {
+    state.view = { down: {}, up: {}, hide: {}, reveal: {}, revealUp: {} };
+    saveView();
+    closePopover();
+    render(null, { animate: true });
+    const c = state.D.center;
+    animateCam(camFor(c.x, c.y, Math.max(state.cam.k, 0.7)), ANIM_MS);
+  }
+
   // ---------- focus ----------
   function setFocus(id) {
     if (!P(id)) return;
     state.focus = { person: id };
+    state.view.expanded = false;
     state.view.reveal = {};
     state.view.revealUp = {};
     saveView();
@@ -623,6 +645,10 @@
     const away = !state.focus.union || state.focus.union !== t.data.root;
     $('#back').hidden = !away;
     $('#back-btn').textContent = 'Back to ' + names;
+    const ex = $('#btn-expand');
+    ex.textContent = state.view.expanded ? 'Tidy up' : 'Expand all';
+    ex.title = state.view.expanded ? 'Back to the tidy view' : 'Show everyone';
+    ex.classList.toggle('on', !!state.view.expanded);
     $('#undo').disabled = !state.history.length;
     $('#redo').disabled = !state.future.length;
   }
@@ -1477,15 +1503,7 @@
       closePopover();
       const k = m.dataset.menu;
       if (k === 'fit') fitAll();
-      if (k === 'expand') {
-        const up = {}, down = {};
-        for (const id of Object.keys(state.tree.data.people)) up[id] = false;
-        for (const id of Object.keys(state.tree.data.unions)) down[id] = false;
-        state.view = { down, up, hide: {}, reveal: {}, revealUp: {} };
-        saveView();
-        render(null, { animate: true });
-        fitAll();
-      }
+      if (k === 'expand') expandAll();
       if (k === 'png') exportPNG();
       if (k === 'ged') download(fileBase() + '.ged', new Blob([FT.toGedcom(state.tree)], { type: 'text/plain' }));
       if (k === 'json') download(fileBase() + '.json', new Blob([JSON.stringify(state.tree.data, null, 2)], { type: 'application/json' }));
@@ -1497,6 +1515,7 @@
     $('#btn-center').addEventListener('click', () => { const c = state.D.center; animateCam(camFor(c.x, c.y, state.cam.k), 400); });
     $('#back-btn').addEventListener('click', () => {
       state.focus = { union: state.tree.data.root };
+      state.view.expanded = false;
       state.view.reveal = {};
       state.view.revealUp = {};
       saveView();
@@ -1506,6 +1525,7 @@
       animateCam(camFor(c.x, c.y, state.cam.k), ANIM_MS);
     });
     $('#btn-settings').addEventListener('click', (e) => settingsMenu(e.currentTarget.getBoundingClientRect()));
+    $('#btn-expand').addEventListener('click', () => (state.view.expanded ? tidyUp() : expandAll()));
     $('#zoom-in').addEventListener('click', () => { const s = stageSize(); zoomAt(s.w / 2, s.top + s.h / 2, 1.25); });
     $('#zoom-out').addEventListener('click', () => { const s = stageSize(); zoomAt(s.w / 2, s.top + s.h / 2, 0.8); });
     $('#undo').addEventListener('click', undo);

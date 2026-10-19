@@ -62,6 +62,12 @@ button { font: inherit; color: inherit; }
   height: 34px; padding: 0 14px; margin: 0 4px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--surface); font-weight: 600; cursor: pointer; color: var(--muted);
 }
+.pill {
+  height: 34px; padding: 0 12px; margin: 0 2px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); font-weight: 600; cursor: pointer; color: var(--ink); white-space: nowrap;
+}
+.pill:hover { background: #f2efe8; }
+.pill.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .publish.pending { background: var(--accent); color: #fff; border-color: var(--accent); }
 .publish:disabled { opacity: .6; cursor: default; }
 body:not(.editing) .edit-only { display: none !important; }
@@ -183,6 +189,7 @@ body:not(.editing) .edit-only { display: none !important; }
   .bar { padding: 0 8px 0 14px; gap: 8px; }
   .search { flex: 1 1 auto; }
   .status { display: none; }
+  .pill { padding: 0 9px; }
   .overlay { place-items: end stretch; padding: 56px 0 0; }
   .modal { max-width: none; border-radius: 16px 16px 0 0; }
   .form .row2 { grid-template-columns: 1fr; gap: 0; }
