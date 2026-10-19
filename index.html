@@ -46,8 +46,13 @@
       <style id="svg-style">
         .link{fill:none;stroke:#c8c2b5;stroke-width:1.6;stroke-linejoin:round}
         .couple{stroke:#b3ab9b;stroke-width:2.2;fill:none}
-        .couple.ended{stroke-dasharray:3 5;stroke:#cdc6b7}
-        .wed.ended{fill:#b9b2a4;font-weight:500}
+        .couple.ended{stroke-dasharray:2 5;stroke:#d3cdc0;stroke-linecap:round}
+        .wed.ended{fill:#bcb5a7;font-weight:500}
+        .knot .hit{fill:transparent}
+        .knot .dot{fill:#b3ab9b}
+        .knot.ended .dot{fill:#f6f5f1;stroke:#cdc6b7;stroke-width:1.5}
+        .knot.editable{cursor:pointer}
+        .knot.editable:hover .dot{fill:#2f2a22;stroke:#2f2a22}
         .wed{font:600 10px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#a59e8f;text-anchor:middle}
         .person{cursor:pointer}
         .card{fill:#fff;stroke:#e2ddd2;stroke-width:1}
@@ -76,7 +81,7 @@
         .ctl{opacity:0;transition:opacity .15s;cursor:pointer}
         .ctl.show,.ctl:hover{opacity:1}
         .ctl circle{fill:#fff;stroke:#bdb5a5}
-        .ctl path{stroke:#6c675e;stroke-width:1.6}
+        .ctl path{stroke:#6c675e;stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
         .add{opacity:0;transition:opacity .12s;cursor:pointer}
         .person:hover .add,.person.sel .add{opacity:1}
         .add circle{fill:#2f2a22}

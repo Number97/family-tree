@@ -33,8 +33,8 @@ All data lives in `data/family.json`. Edit it directly, then validate and commit
 - **unions** are couples and their children:
   - `partners` holds 0–2 person ids.
   - `children` lists the children in birth order.
-  - `status` is `"married"`, `"partner"` (together, not married), `"divorced"` or `"separated"`.
-  - `start` is when they got together or married. `end` is when a divorce or separation happened.
+  - `status` is `"partner"` (together), `"married"`, `"separated"` (shown as "Not together anymore") or `"divorced"`. Missing means together.
+  - `start` and `end` are optional years or dates. The user rarely knows them, so never ask for them.
   - A relationship ended by death needs no `end`: keep the status (e.g. `"married"`) and give the person a `death` date. The page shows "until X's death".
   - Every person is a child in at most one union.
   - Siblings whose parents are unknown share a union with `"partners": []`.

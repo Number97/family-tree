@@ -7,6 +7,7 @@ Edits made in the browser are written straight to data/family.json.
 The Publish button commits that file and pushes it to GitHub, which updates the online version.
 """
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -25,8 +26,25 @@ from validate import validate  # noqa: E402
 LOCK = threading.Lock()
 
 
-def git(*args):
-    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+def git(*args, timeout=30):
+    # Never wait for a password prompt in the terminal: fail with a message instead.
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    try:
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL, env=env, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, 1, "", "git took too long (check your internet connection)")
+
+
+def version():
+    return hashlib.sha1(DATA.read_bytes()).hexdigest()
+
+
+def push():
+    result = git("push", "-q", timeout=90)
+    if result.returncode != 0 and "terminal prompts disabled" in result.stderr:
+        result.stderr = "GitHub asked for a login. Run 'git push' once in Terminal to sign in, then try again."
+    return result
 
 
 def dirty():
@@ -66,11 +84,23 @@ def describe(old, new):
         if not before and len(partners) == 2:
             links.append(f"Linked {partners[0]} and {partners[1]} as a couple")
         elif before and before.get("status") != u.get("status") and len(partners) == 2:
-            links.append(f"Marked {partners[0]} and {partners[1]} as {u.get('status')}")
+            if u.get("status"):
+                links.append(f"Marked {partners[0]} and {partners[1]} as {u['status']}")
+            else:
+                links.append(f"Cleared the relationship status of {partners[0]} and {partners[1]}")
         elif before and before.get("end") != u.get("end") and u.get("end") and len(partners) == 2:
             links.append(f"Set when {partners[0]} and {partners[1]} split up")
         elif before and before.get("start") != u.get("start") and len(partners) == 2:
             links.append(f"Set when {partners[0]} and {partners[1]} got together")
+    for uid, u in ou.items():
+        partners = [p for p in u.get("partners", []) if p in np_]
+        if uid not in nu and len(partners) == 2:
+            links.append(f"Unlinked {label(np_, partners[0])} and {label(np_, partners[1])}")
+    parent_of = lambda unions: {c: uid for uid, u in unions.items() for c in u.get("children", [])}
+    old_parents, new_parents = parent_of(ou), parent_of(nu)
+    for pid, uid in new_parents.items():
+        if pid in op and pid in old_parents and old_parents[pid] != uid:
+            links.append(f"Changed the parents of {label(np_, pid)}")
     if new.get("title") != old.get("title"):
         links.append(f"Renamed the tree to \"{new.get('title')}\"")
 
@@ -127,15 +157,37 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def local_host(self):
+        # Only answer requests addressed to this machine (guards against DNS rebinding).
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+        return host in ("localhost", "127.0.0.1", "[::1]")
+
+    def hidden(self):
+        try:
+            rel = Path(self.translate_path(self.path)).resolve().relative_to(ROOT)
+        except ValueError:
+            return True
+        return any(part.startswith(".") and part != ".nojekyll" for part in rel.parts)
+
     def do_GET(self):
+        if not self.local_host():
+            return self.send_error(403)
         if self.path.startswith("/api/status"):
-            return self.send_json({"edit": True, "dirty": dirty()})
-        if any(part.startswith(".") and part != ".nojekyll" for part in self.path.split("?")[0].split("/")):
+            return self.send_json({"edit": True, "dirty": dirty(), "version": version()})
+        if self.path.startswith("/api/data"):
+            with LOCK:
+                return self.send_json({"version": version(), "data": json.loads(DATA.read_text(encoding="utf-8"))})
+        if self.hidden():
             return self.send_error(404)
         return super().do_GET()
 
+    def do_HEAD(self):
+        if not self.local_host() or self.hidden():
+            return self.send_error(404)
+        return super().do_HEAD()
+
     def do_POST(self):
-        if self.headers.get("Origin") not in (None, f"http://{self.headers.get('Host')}"):
+        if not self.local_host() or self.headers.get("Origin") not in (None, f"http://{self.headers.get('Host')}"):
             return self.send_json({"ok": False, "error": "Forbidden"}, 403)
         if self.path == "/api/data":
             return self.save()
@@ -146,18 +198,29 @@ class Handler(SimpleHTTPRequestHandler):
     def save(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
-            data = json.loads(self.rfile.read(length))
-            if not isinstance(data.get("people"), dict) or not isinstance(data.get("unions"), dict):
+            body = json.loads(self.rfile.read(length))
+            data = body.get("data")
+            if not isinstance(data, dict) or not isinstance(data.get("people"), dict) or not isinstance(data.get("unions"), dict):
                 raise ValueError("missing people/unions")
-        except (ValueError, json.JSONDecodeError) as e:
+        except (ValueError, AttributeError, json.JSONDecodeError) as e:
             return self.send_json({"ok": False, "error": str(e)}, 400)
         with LOCK:
+            # Refuse to overwrite a file that changed since this page loaded it.
+            if body.get("version") != version():
+                current = json.loads(DATA.read_text(encoding="utf-8"))
+                return self.send_json({"ok": False, "conflict": True, "version": version(), "data": current}, 409)
             tmp = DATA.with_suffix(".json.tmp")
             tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             os.replace(tmp, DATA)
-        return self.send_json({"ok": True})
+            return self.send_json({"ok": True, "version": version()})
 
     def publish(self):
+        try:
+            return self._publish()
+        except Exception as e:  # always answer with JSON so the page can show the problem
+            return self.send_json({"ok": False, "error": f"Publishing failed: {e}"}, 500)
+
+    def _publish(self):
         with LOCK:
             new = json.loads(DATA.read_text(encoding="utf-8"))
             errors, _ = validate(new)
@@ -166,22 +229,24 @@ class Handler(SimpleHTTPRequestHandler):
             # Only commit with the identity set for this repo, never a machine-wide one.
             if not git("config", "--local", "user.email").stdout.strip():
                 return self.send_json({"ok": False, "error": "No email set for this repo. Run: git config --local user.email you@example.com"}, 400)
-            if not dirty():
-                push = git("push", "-q")
-                if push.returncode != 0:
-                    return self.send_json({"ok": False, "error": "Nothing new, and pushing failed: " + push.stderr.strip()[:200]})
-                return self.send_json({"ok": True, "message": "Already up to date — nothing new to publish"})
-            head = git("show", "HEAD:data/family.json")
-            old = json.loads(head.stdout) if head.returncode == 0 else {}
-            message = describe(old, new)
-            rel = str(DATA.relative_to(ROOT))
-            git("add", "--", rel)
-            commit = git("commit", "-q", "-m", message, "--", rel)
-            if commit.returncode != 0:
-                return self.send_json({"ok": False, "error": "Commit failed: " + (commit.stderr or commit.stdout).strip()[:200]})
-            push = git("push", "-q")
-            if push.returncode != 0:
-                return self.send_json({"ok": False, "error": "Saved a commit, but pushing failed: " + push.stderr.strip()[:200]})
+            committed = False
+            if dirty():
+                committed = True
+                head = git("show", "HEAD:data/family.json")
+                old = json.loads(head.stdout) if head.returncode == 0 else {}
+                message = describe(old, new)
+                rel = str(DATA.relative_to(ROOT))
+                git("add", "--", rel)
+                commit = git("commit", "-q", "-m", message, "--", rel)
+                if commit.returncode != 0:
+                    return self.send_json({"ok": False, "error": "Commit failed: " + (commit.stderr or commit.stdout).strip()[:200]})
+        # Push outside the lock so saving keeps working even if the network is slow.
+        result = push()
+        if result.returncode != 0:
+            prefix = "Saved a version, but putting it online failed: " if committed else "Putting it online failed: "
+            return self.send_json({"ok": False, "error": prefix + result.stderr.strip()[:240]})
+        if not committed:
+            return self.send_json({"ok": True, "message": "Already up to date — nothing new to publish"})
         return self.send_json({"ok": True, "message": "Published — online in about a minute"})
 
 

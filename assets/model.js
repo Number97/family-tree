@@ -11,7 +11,10 @@
     if (!s) return null;
     const m = DATE_RE.exec(String(s).trim());
     if (!m) return null;
-    return { approx: !!m[1], y: +m[2], m: m[3] ? +m[3] : null, d: m[4] ? +m[4] : null };
+    const out = { approx: !!m[1], y: +m[2], m: m[3] ? +m[3] : null, d: m[4] ? +m[4] : null };
+    if (out.m != null && (out.m < 1 || out.m > 12)) return null;
+    if (out.d != null && (out.d < 1 || out.d > new Date(out.y, out.m, 0).getDate())) return null;
+    return out;
   }
 
   function formatDate(s) {
@@ -41,7 +44,7 @@
     let t = String(text || '').trim().toLowerCase();
     if (!t) return '';
     let approx = false;
-    const ap = /^(~|c\.?|ca\.?|circa|about|abt\.?|around|approx\.?)\s*/;
+    const ap = /^(~|(?:circa|ca|c|about|abt|around|approx)(?:\.|\b))\s*/;
     if (ap.test(t)) { approx = true; t = t.replace(ap, ''); }
     const pad = (n) => String(n).padStart(2, '0');
     const ok = (y, m, d) => {
@@ -55,7 +58,7 @@
     if ((m = /^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/.exec(t))) return ok(+m[1], +m[2], m[3] ? +m[3] : null);
     if ((m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(t))) return ok(+m[3], +m[2], +m[1]);
     if ((m = /^(\d{1,2})[./-](\d{4})$/.exec(t))) return ok(+m[2], +m[1]);
-    const monthIdx = (w) => MONTHS.findIndex((mm) => mm.toLowerCase().startsWith(w.slice(0, 3))) + 1;
+    const monthIdx = (w) => (w.length < 3 ? 0 : MONTHS.findIndex((mm) => mm.toLowerCase().startsWith(w)) + 1);
     if ((m = /^(\d{1,2})\s+([a-z]+)\.?,?\s+(\d{4})$/.exec(t))) { const mi = monthIdx(m[2]); return mi ? ok(+m[3], mi, +m[1]) : null; }
     if ((m = /^([a-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(t))) { const mi = monthIdx(m[1]); return mi ? ok(+m[3], mi, +m[2]) : null; }
     if ((m = /^([a-z]+)\.?,?\s+(\d{4})$/.exec(t))) { const mi = monthIdx(m[1]); return mi ? ok(+m[2], mi) : null; }
@@ -222,7 +225,7 @@
     }
     addChild(pid, unionId) {
       const nc = this.addPerson();
-      if (unionId) {
+      if (unionId && this.union(unionId)) {
         this.union(unionId).children.push(nc);
         this.reindex();
       } else {

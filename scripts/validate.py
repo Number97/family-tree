@@ -4,6 +4,7 @@
 Usage: python3 scripts/validate.py [path/to/family.json]
 Exits with status 1 when there are errors (warnings alone are fine).
 """
+import calendar
 import json
 import re
 import sys
@@ -15,9 +16,22 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT = ROOT / "data" / "family.json"
 
 
+def valid_date(value):
+    if not isinstance(value, str):
+        return False
+    m = DATE_RE.match(value)
+    if not m:
+        return False
+    y, mo, d = int(m.group(1)), m.group(3), m.group(5)
+    if mo and not 1 <= int(mo) <= 12:
+        return False
+    if d and not 1 <= int(d) <= calendar.monthrange(y, int(mo))[1]:
+        return False
+    return True
+
+
 def year(value):
-    m = DATE_RE.match(value or "")
-    return int(m.group(1)) if m else None
+    return int(value.lstrip("~")[:4]) if valid_date(value) else None
 
 
 def validate(data):
@@ -36,8 +50,8 @@ def validate(data):
             errors.append(f"{pid}: person must be an object")
             continue
         for field in ("birth", "death"):
-            if p.get(field) and not DATE_RE.match(p[field]):
-                errors.append(f"{name(pid)}: {field} '{p[field]}' is not YYYY, YYYY-MM or YYYY-MM-DD")
+            if p.get(field) and not valid_date(p[field]):
+                errors.append(f"{name(pid)}: {field} '{p[field]}' is not a real date written as YYYY, YYYY-MM or YYYY-MM-DD")
         if p.get("gender") not in (None, "m", "f"):
             errors.append(f"{name(pid)}: gender must be 'm', 'f' or absent")
         b, d = year(p.get("birth")), year(p.get("death"))
@@ -50,15 +64,16 @@ def validate(data):
     linked = set()
     for uid, u in unions.items():
         partners, children = u.get("partners", []), u.get("children", [])
+        couple = " & ".join(name(p) for p in partners) or uid
         if len(partners) > 2:
             errors.append(f"union {uid}: more than two partners")
         if u.get("status") not in (None, "married", "partner", "divorced", "separated"):
             errors.append(f"union {uid}: status must be married, partner, divorced or separated")
         for field in ("start", "end"):
-            if u.get(field) and not DATE_RE.match(u[field]):
-                errors.append(f"union {uid}: {field} '{u[field]}' is not a valid date")
+            if u.get(field) and not valid_date(u[field]):
+                errors.append(f"{couple}: {field} '{u[field]}' is not a real date")
         if year(u.get("start")) and year(u.get("end")) and year(u["end"]) < year(u["start"]):
-            errors.append(f"union {uid}: ends ({u['end']}) before it starts ({u['start']})")
+            errors.append(f"{couple}: the relationship ends ({u['end']}) before it starts ({u['start']})")
         for pid in partners + children:
             if pid not in people:
                 errors.append(f"union {uid}: refers to missing person '{pid}'")

@@ -158,7 +158,23 @@
       return pa.some((x) => pb.includes(x)) ? SIB_GAP : GROUP_GAP;
     };
     const cx = (p) => { const u = unitOf[p]; return ux[u.id] + u.members.indexOf(p) * (CARD_W + COUPLE_GAP) + CARD_W / 2; };
+    // Partners in one chain but not next to each other (someone with several partners):
+    // their children hang from the gap beside the partner who isn't the shared one.
+    const farPair = (uid) => {
+      const ps = tree.union(uid).partners.filter(vis);
+      if (ps.length !== 2 || unitOf[ps[0]] !== unitOf[ps[1]]) return null;
+      const m = unitOf[ps[0]].members;
+      const [a, b] = ps.slice().sort((x, y) => m.indexOf(x) - m.indexOf(y));
+      return m.indexOf(b) - m.indexOf(a) > 1 ? { a, b, m } : null;
+    };
+    const degree = (p) => (adj[p] || []).length;
     const unionCenter = (uid) => {
+      const far = farPair(uid);
+      if (far) {
+        return degree(far.b) <= degree(far.a)
+          ? cx(far.b) - CARD_W / 2 - COUPLE_GAP / 2
+          : cx(far.a) + CARD_W / 2 + COUPLE_GAP / 2;
+      }
       const ps = tree.union(uid).partners.filter(vis);
       if (ps.length) return ps.reduce((s, p) => s + cx(p), 0) / ps.length;
       return null;
@@ -195,7 +211,7 @@
       const kids = visChildren(uid);
       if (kids.length) kidUnitsOf[uid] = { kids, units: [...new Set(kids.map((c) => unitOf[c]))] };
     }
-    for (let iter = 0; iter < 120; iter++) {
+    const settle = (iterations) => { for (let iter = 0; iter < iterations; iter++) {
       const pulls = {};
       const push = (id, d) => (pulls[id] = pulls[id] || []).push(d);
       for (const [uid, { kids, units: ku }] of Object.entries(kidUnitsOf)) {
@@ -227,7 +243,31 @@
         const xs = pav(desired, r.map(unitW), rowGaps[g]);
         r.forEach((u, i) => { ux[u.id] = xs[i]; });
       }
-    }
+    } };
+
+    // Put each group of siblings in the order of their parents above, so lines don't cross
+    // (e.g. half-siblings from a father's other relationships end up under that relationship).
+    const reorder = () => {
+      for (const g of gens) {
+        const r = rows[g];
+        const blocks = new Map();
+        r.forEach((u, i) => {
+          const pus = u.members.map(visParentUnion).filter((x) => x && tree.union(x).partners.some(vis));
+          const key = pus.length ? 'u:' + pus[0] : 'x:' + u.id;
+          if (!blocks.has(key)) blocks.set(key, { units: [], first: i, x: pus.length ? unionCenter(pus[0]) : null });
+          blocks.get(key).units.push(u);
+        });
+        for (const b of blocks.values()) {
+          if (b.x == null) b.x = b.units.reduce((s, u) => s + ux[u.id] + unitW(u) / 2, 0) / b.units.length;
+        }
+        const sorted = [...blocks.values()].sort((a, b) => (a.x - b.x) || (a.first - b.first));
+        rows[g] = sorted.flatMap((b) => b.units);
+        rowGaps[g] = rows[g].slice(0, -1).map((u, i) => gapBetween(u, rows[g][i + 1]));
+      }
+    };
+    settle(60);
+    reorder();
+    settle(140);
 
     // ---- 5. output ----
     const nodes = {};
@@ -249,11 +289,12 @@
       let ox = unionCenter(uid), oy = y + CARD_H / 2;
       if (ps.length === 1 || (ps.length === 2 && !adjacent)) oy = y + CARD_H;
       if (sameUnit && !adjacent) oy = y + CARD_H + 12;
+      const far = farPair(uid);
       if (ox == null) ox = span(uid);
       unions.push({
         id: uid, partners: ps, children: kids, x: ox, y: oy, rowY: y,
         couple: adjacent ? pair : null,
-        bracket: sameUnit && !adjacent ? pair : null,
+        bracket: far ? pair : null,
         status: u.status || '', start: u.start || '', end: u.end || '',
         collapsed: !!down[uid] && hidden.length > 0,
         hiddenCount: hidden.length ? countHidden(tree, hidden, gen) : 0,

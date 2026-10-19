@@ -20,7 +20,8 @@
     lastKey: null,
     lastTime: 0,
     newPerson: null,
-    newPersonHist: -1,
+    newPersonSnap: null,
+    version: null,
   };
 
   // ---------- helpers ----------
@@ -76,16 +77,19 @@
     return { size, lines: rest ? [first, fit(rest, max, font)] : [first] };
   }
 
+  // Years shown above a couple's line, only when known.
   function coupleLabel(u) {
     const s = FT.yearOf(u.start), e = FT.yearOf(u.end);
-    if (u.status === 'divorced' || u.status === 'separated') {
-      const word = u.status === 'divorced' ? 'div.' : 'sep.';
-      if (s && e) return s + '–' + (Math.floor(s / 100) === Math.floor(e / 100) ? String(e).slice(2) : e);
-      if (e) return word + ' ' + e;
-      if (s) return s + '–';
-      return word;
-    }
+    if (s && e) return s + '–' + (Math.floor(s / 100) === Math.floor(e / 100) ? String(e).slice(2) : e);
+    if (e) return '–' + e;
     return s ? String(s) : '';
+  }
+  const STATUS = { '': 'Together', partner: 'Together', married: 'Married', separated: 'Not together anymore', divorced: 'Divorced' };
+  const isEnded = (status) => status === 'separated' || status === 'divorced';
+  function knot(x, y, u) {
+    const tip = STATUS[u.status || ''] + (state.editable ? ' — click to change' : '');
+    const act = state.editable ? `data-act="couple" data-u="${u.id}"` : '';
+    return `<g class="knot${isEnded(u.status) ? ' ended' : ''}${state.editable ? ' editable' : ''}" ${act} transform="translate(${x},${y})"><title>${esc(tip)}</title><circle class="hit" r="12"/><circle class="dot" r="4.5"/></g>`;
   }
 
   function yearsText(p) {
@@ -191,31 +195,33 @@
     const busY = (u) => u.busY;
 
     for (const u of L.unions) {
-      const ended = u.status === 'divorced' || u.status === 'separated' ? ' ended' : '';
+      const ended = isEnded(u.status) ? ' ended' : '';
       if (u.couple) {
         const [a, b] = u.couple;
         const y = a.y + CARD_H / 2;
         links.push(`<path class="couple${ended}" d="M${a.x + CARD_W},${y}H${b.x}"/>`);
         const label = coupleLabel(u);
-        if (label) links.push(`<text class="wed${ended}" x="${(a.x + CARD_W + b.x) / 2}" y="${y - 7}">${esc(label)}</text>`);
+        if (label) links.push(`<text class="wed${ended}" x="${(a.x + CARD_W + b.x) / 2}" y="${y - 9}">${esc(label)}</text>`);
+        ctls.push(knot((a.x + CARD_W + b.x) / 2, y, u));
       } else if (u.bracket) {
         const [a, b] = u.bracket;
         const y = a.y + CARD_H;
-        links.push(`<path class="couple${ended}" d="M${a.x + CARD_W / 2},${y}V${y + 12}H${b.x + CARD_W / 2}V${y}"/>`);
+        links.push(`<path class="couple${ended}" d="M${a.x + CARD_W * 0.7},${y}V${y + 12}H${b.x + CARD_W * 0.3}V${y}"/>`);
+        ctls.push(knot(u.x, y + 12, u));
       }
       const by = busY(u);
       if (u.children.length) {
         const xs = u.children.map((c) => L.nodes[c].x + CARD_W / 2);
         let d = '';
         if (u.partners.length) {
-          d += `M${u.x},${u.y}V${by}`;
+          d += `M${u.x},${u.y + (u.couple || u.bracket ? 5 : 0)}V${by}`;
           xs.push(u.x);
         } else {
           d += `M${(Math.min(...xs) + Math.max(...xs)) / 2},${by - 16}V${by}`;
         }
         const only = u.children.length === 1 && u.partners.length ? L.nodes[u.children[0]] : null;
         if (only && Math.abs(only.x + CARD_W / 2 - u.x) < 24) {
-          d = `M${u.x},${u.y}V${childY(u)}`;
+          d = `M${u.x},${u.y + (u.couple || u.bracket ? 5 : 0)}V${childY(u)}`;
         } else {
           d += `M${Math.min(...xs)},${by}H${Math.max(...xs)}`;
           for (const c of u.children) d += `M${L.nodes[c].x + CARD_W / 2},${by}V${childY(u)}`;
@@ -223,7 +229,7 @@
         links.push(`<path class="link" d="${d}"/>`);
         // Toggle to fold this family's children away (only when there is something to fold).
         if (u.children.some((c) => L.reach[c] === 'child') && u.partners.length) {
-          ctls.push(ctl(u.x, by, 'minus', `data-act="fold" data-u="${u.id}" data-for="${u.partners.join(' ')}"`, 'Hide children'));
+          ctls.push(ctl(u.x, by, 'up', `data-act="fold" data-u="${u.id}" data-for="${u.partners.join(' ')}"`, 'Fold away their children'));
         }
       }
       if (u.collapsed && u.partners.length) {
@@ -263,7 +269,7 @@
       // Toggle to fold this person's parents away.
       const pu = t.parentUnion(id);
       if (pu && ['root', 'ancestor', 'spouse'].includes(L.reach[id]) && !L.upChips.some((c) => c.person === id) && L.unions.some((u) => u.id === pu)) {
-        ctls.push(ctl(n.x + CARD_W / 2, n.y - 16, 'minus', `data-act="hide-up" data-p="${id}" data-for="${id}"`, 'Hide parents'));
+        ctls.push(ctl(n.x + CARD_W / 2, n.y - 16, 'down', `data-act="hide-up" data-p="${id}" data-for="${id}"`, 'Fold away their parents'));
       }
     }
     $('#links').innerHTML = links.join('');
@@ -272,7 +278,8 @@
   }
 
   function ctl(x, y, kind, attrs, title) {
-    return `<g class="ctl" ${attrs} transform="translate(${x},${y})"><title>${esc(title)}</title><circle r="9"/><path d="M-4 0H4"/></g>`;
+    const chevron = kind === 'up' ? 'M-3.5 1.8L0 -1.8L3.5 1.8' : 'M-3.5 -1.8L0 1.8L3.5 -1.8';
+    return `<g class="ctl" ${attrs} transform="translate(${x},${y})"><title>${esc(title)}</title><circle r="9"/><path d="${chevron}"/></g>`;
   }
   function chip(x, y, label, attrs, title) {
     const w = Math.max(34, measure(label, '600 11px ' + FAMILY) + 18);
@@ -334,11 +341,14 @@
       for (const { id: q, union } of partners) {
         const u = t.union(union);
         if (state.editable) {
-          const opt = (v, label) => `<option value="${v}"${(u.status || '') === v ? ' selected' : ''}>${label}</option>`;
+          const cur = u.status || 'partner';
+          const opt = (v, label) => `<option value="${v}"${cur === v ? ' selected' : ''}>${label}</option>`;
+          const showDates = u.start || u.end || state.datesOpen === union;
           h += `<div class="pblock"><a data-go="${q}">${esc(nameOf(q))}</a><div class="pctl">
-            <select data-u="${union}" data-uf="status">${opt('', 'Status unknown')}${opt('married', 'Married')}${opt('partner', 'Together')}${opt('divorced', 'Divorced')}${opt('separated', 'Separated')}</select>
-            <input class="mini" type="text" data-udate="${union}" data-ufield="start" placeholder="since" value="${esc(formatDate(u.start))}" title="When they got together or married">
-            ${t.isEnded(union) ? `<input class="mini" type="text" data-udate="${union}" data-ufield="end" placeholder="until" value="${esc(formatDate(u.end))}" title="When it ended">` : ''}
+            <select data-u="${union}" data-uf="status">${opt('partner', 'Together')}${opt('married', 'Married')}${opt('separated', 'Not together anymore')}${cur === 'divorced' ? opt('divorced', 'Divorced') : ''}</select>
+            ${showDates ? `<input class="mini" type="text" data-udate="${union}" data-ufield="start" placeholder="since" value="${esc(formatDate(u.start))}" title="When they got together (year is enough)">
+            ${t.isEnded(union) ? `<input class="mini" type="text" data-udate="${union}" data-ufield="end" placeholder="until" value="${esc(formatDate(u.end))}" title="When it ended (year is enough)">` : ''}`
+            : `<button class="linkish" data-act="dates" data-u="${union}">add years</button>`}
           </div></div>`;
         } else {
           const st = partnerSummary(union, id);
@@ -396,7 +406,7 @@
     const word = { married: 'married', divorced: 'married', separated: 'together', partner: 'together' }[u.status] || 'since';
     if (u.start) parts.push(word + ' ' + formatDate(u.start));
     else if (u.status === 'married') parts.push('married');
-    if (t.isEnded(uid)) parts.push((u.status === 'divorced' ? 'divorced' : 'separated') + (u.end ? ' ' + formatDate(u.end) : ''));
+    if (t.isEnded(uid)) parts.push((u.status === 'divorced' ? 'divorced' : 'not together anymore') + (u.end ? ' since ' + formatDate(u.end) : ''));
     else {
       const gone = u.partners.filter((x) => x !== self && dead(x))[0] || u.partners.filter(dead)[0];
       if (gone && parts.length) {
@@ -444,7 +454,7 @@
     h += `<label class="check"><input type="checkbox" data-f="deceased" ${p.deceased || deathSet ? 'checked' : ''} ${deathSet ? 'disabled' : ''}> Passed away</label>`;
     h += `<label>Notes<textarea data-f="notes" rows="3" placeholder="Anything worth remembering">${esc(p.notes || '')}</textarea></label>`;
     const warns = warnings(id);
-    if (warns.length) h += `<div class="warn">${warns.map(esc).join('<br>')}</div>`;
+    h += `<div class="warn" id="p-warn" ${warns.length ? '' : 'hidden'}>${warns.map(esc).join('<br>')}</div>`;
     h += '</div>';
     return h;
   }
@@ -454,6 +464,7 @@
     const by = FT.yearOf(p.birth), dy = FT.yearOf(p.death);
     if (by && dy && dy < by) out.push('Death is before birth.');
     for (const par of t.parents(id)) {
+      if (!P(par)) continue;
       const py = FT.yearOf(P(par).birth);
       if (by && py && by <= py) out.push(`Born before their parent ${t.firstName(par)}.`);
       else if (by && py && by - py < 12) out.push(`Born only ${by - py} years after ${t.firstName(par)}.`);
@@ -461,6 +472,10 @@
       if (by && pdy && by > pdy + 1) out.push(`Born after ${t.firstName(par)} died.`);
     }
     if (by && !p.deceased && !p.death && new Date().getFullYear() - by > 105) out.push('Over 105 years old — passed away?');
+    for (const { id: q, union } of t.partnersOf(id)) {
+      const u = t.union(union), s1 = FT.yearOf(u.start), e1 = FT.yearOf(u.end);
+      if (s1 && e1 && e1 < s1) out.push(`The relationship with ${t.firstName(q)} ends before it starts.`);
+    }
     return out;
   }
 
@@ -486,14 +501,19 @@
 
   function refreshPanelHead() {
     const id = state.selected;
-    if (!id) return;
+    if (!id || !P(id)) return;
     const p = P(id), h = $('#p-name');
     if (h) h.innerHTML = esc(p.name || 'New person') + (dead(id) ? '<span class="tag">passed away</span>' : '');
     const av = $('#panel .p-av');
     if (av) { av.textContent = initials(p.name); av.className = 'p-av' + (p.gender ? ' g-' + p.gender : '') + (dead(id) ? ' dead' : ''); }
+    const w = $('#p-warn');
+    if (w) { const list = warnings(id); w.innerHTML = list.map(esc).join('<br>'); w.hidden = !list.length; }
+    const box = $('#modal input[data-f="deceased"]');
+    if (box) { box.checked = !!(p.deceased || p.death); box.disabled = !!p.death; }
   }
 
   function restore(json) {
+    closePopover();
     state.tree = new Tree(JSON.parse(json));
     state.lastKey = null;
     if (state.selected && !P(state.selected)) state.selected = null;
@@ -516,6 +536,11 @@
 
   // ref: the family to use (child, partner) or the shared parent (half-sibling).
   function addRelative(pid, kind, ref) {
+    const t0 = state.tree;
+    // The menu may be stale (e.g. after undo): never link to people or families that are gone.
+    if (!t0.person(pid)) return;
+    if (kind === 'child' && ref && !t0.union(ref)) ref = null;
+    if (kind === 'half' && !t0.person(ref)) return;
     let nid = null;
     mutate((t) => {
       if (kind === 'parent') { nid = t.addParent(pid); state.view.up[pid] = false; }
@@ -534,7 +559,7 @@
     if (!nid) return;
     saveView();
     state.newPerson = nid;
-    state.newPersonHist = state.history.length;
+    state.newPersonSnap = state.history[state.history.length - 1];
     select(nid, { anchor: pid, reveal: true, focusName: true });
   }
 
@@ -547,7 +572,7 @@
     if (!p) return;
     const empty = !p.name && !p.birth && !p.death && !p.notes && !p.birthName;
     if (!empty) return;
-    if (state.history.length === state.newPersonHist) {
+    if (state.history.length && state.history[state.history.length - 1] === state.newPersonSnap) {
       state.tree = new Tree(JSON.parse(state.history.pop()));
     } else {
       state.tree.removePerson(id);
@@ -585,15 +610,56 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, 350);
   }
-  async function save() {
+  // Saves go one at a time. The server refuses a save if the file changed elsewhere
+  // (another tab, or an edit made outside the page) so newer data is never overwritten.
+  let saveChain = Promise.resolve(true);
+  function save() {
+    saveTimer = null;
+    saveChain = saveChain.then(doSave, doSave);
+    return saveChain;
+  }
+  async function doSave() {
     try {
-      const r = await fetch('api/data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state.tree.data) });
-      if (!r.ok) throw new Error(await r.text());
+      const r = await fetch('api/data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: state.version, data: state.tree.data }) });
+      const res = await r.json();
+      if (r.status === 409) {
+        adopt(res, 'This tree was changed somewhere else (another tab or window), so the latest version was loaded. Your last change was not saved — please redo it.');
+        return false;
+      }
+      if (!r.ok || !res.ok) throw new Error(res.error || 'save failed');
+      state.version = res.version;
       setStatus('Saved');
       refreshPublish();
+      return true;
     } catch (e) {
       setStatus('Not saved — is the app still running?', true);
+      return false;
     }
+  }
+  function adopt(res, message) {
+    state.tree = new Tree(res.data);
+    state.version = res.version;
+    state.history = [];
+    state.future = [];
+    state.newPerson = null;
+    closePopover();
+    if (state.selected && !P(state.selected)) state.selected = null;
+    render(state.selected);
+    renderPanel();
+    setStatus('Saved');
+    if (message) toast(message, true, 9000);
+    refreshPublish();
+  }
+  // Pick up changes made outside this tab when coming back to it.
+  async function checkForOutsideChanges() {
+    if (!state.editable || saveTimer || document.hidden) return;
+    try {
+      const s = await (await fetch('api/status', { cache: 'no-store' })).json();
+      if (s.version && s.version !== state.version && !saveTimer) {
+        const res = await (await fetch('api/data', { cache: 'no-store' })).json();
+        adopt(res, 'Loaded the latest version of the tree.');
+      }
+    } catch (e) { /* server gone */ }
   }
   async function refreshPublish() {
     try {
@@ -606,7 +672,8 @@
   }
   async function publish() {
     const b = $('#publish');
-    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; await save(); }
+    clearTimeout(saveTimer);
+    if (!(await save())) { toast('Couldn\u2019t save the latest changes, so nothing was published.', true, 7000); return; }
     b.disabled = true;
     b.textContent = 'Publishing…';
     try {
@@ -662,6 +729,20 @@
     openPopover(h, rect);
   }
 
+  function coupleMenu(uid, rect) {
+    const t = state.tree, u = t.union(uid);
+    if (!u) return;
+    const cur = u.status || '';
+    const item = (v, label) => {
+      const on = (cur === v) || (v === 'partner' && cur === '');
+      return `<button class="item" data-status="${v}" data-u="${uid}"><span>${label}</span><span class="muted">${on ? '✓' : ''}</span></button>`;
+    };
+    let h = `<div class="hd">${esc(u.partners.map((p) => t.firstName(p)).join(' & '))}</div>`;
+    h += item('partner', 'Together') + item('married', 'Married') + item('separated', 'Not together anymore');
+    if (cur === 'divorced') h += item('divorced', 'Divorced');
+    openPopover(h, rect);
+  }
+
   function datesMenu(rect) {
     const t = state.tree, today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -707,14 +788,19 @@
 
   // ---------- search ----------
   let searchHits = [], searchIdx = 0;
+  // Names starting with the query first, then names containing it, then birth-name matches.
+  function rank(p) {
+    const i = fold(p.name).indexOf(fold($('#search').value.trim()));
+    return i === 0 ? 0 : i > 0 ? 1 : 2;
+  }
   function runSearch() {
     const q = fold($('#search').value.trim());
     const box = $('#results');
-    if (!q) { box.hidden = true; return; }
+    if (!q) { box.hidden = true; searchHits = []; return; }
     const t = state.tree;
     searchHits = Object.entries(t.data.people)
       .filter(([, p]) => fold(p.name).includes(q) || fold(p.birthName).includes(q))
-      .sort((a, b) => fold(a[1].name).indexOf(q) - fold(b[1].name).indexOf(q))
+      .sort((a, b) => rank(a[1]) - rank(b[1]))
       .slice(0, 8)
       .map(([id]) => id);
     searchIdx = 0;
@@ -841,6 +927,7 @@
       if (act) {
         const a = act.dataset.act;
         if (a === 'add') { addMenu(act.dataset.p, act.getBoundingClientRect()); return; }
+        if (a === 'couple') { coupleMenu(act.dataset.u, act.getBoundingClientRect()); return; }
         if (a === 'fold') { state.view.down[act.dataset.u] = true; saveView(); render(state.selected || state.tree.union(act.dataset.u).partners[0]); return; }
         if (a === 'unfold') { delete state.view.down[act.dataset.u]; saveView(); render(state.tree.union(act.dataset.u).partners[0]); return; }
         if (a === 'show-up') { state.view.up[act.dataset.p] = false; saveView(); render(act.dataset.p); return; }
@@ -877,6 +964,7 @@
       const act = e.target.closest('[data-act]');
       if (!act) return;
       if (act.dataset.act === 'close') select(null);
+      if (act.dataset.act === 'dates') { state.datesOpen = act.dataset.u; renderPanel(); const i = $(`#modal input[data-udate="${act.dataset.u}"]`); if (i) i.focus(); return; }
       if (act.dataset.act === 'delete') deletePerson(state.selected);
       if (act.dataset.act === 'focus') {
         const id = state.selected;
@@ -916,11 +1004,12 @@
           if (v) p[field] = v; else delete p[field];
           if (field === 'death' && v) p.deceased = true;
           if (field === 'birth') { const pu = t.parentUnion(id); if (pu) t.sortChildren(pu); }
-        });
+        }, { panel: false });
+        el.value = formatDate(v);
         return;
       }
       if (el.dataset.uf === 'status') {
-        mutate((t) => { const u = t.union(el.dataset.u); if (el.value) u.status = el.value; else delete u.status; });
+        mutate((t) => { const u = t.union(el.dataset.u); if (!u) return; if (el.value) u.status = el.value; else delete u.status; });
         return;
       }
       if (el.dataset.udate) {
@@ -928,7 +1017,8 @@
         if (v === null) { el.classList.add('bad'); return; }
         el.classList.remove('bad');
         const f = el.dataset.ufield;
-        mutate((t) => { const u = t.union(el.dataset.udate); if (v) u[f] = v; else delete u[f]; });
+        mutate((t) => { const u = t.union(el.dataset.udate); if (u) { if (v) u[f] = v; else delete u[f]; } }, { panel: false });
+        el.value = formatDate(v);
         return;
       }
       if (el.hasAttribute('data-move')) {
@@ -941,6 +1031,12 @@
 
     // Popover
     $('#popover').addEventListener('click', (e) => {
+      const st = e.target.closest('[data-status]');
+      if (st) {
+        closePopover();
+        mutate((t) => { const u = t.union(st.dataset.u); if (u) u.status = st.dataset.status; });
+        return;
+      }
       const add = e.target.closest('[data-add]');
       if (add) { closePopover(); addRelative(add.dataset.p, add.dataset.add, add.dataset.ref || null); return; }
       const go = e.target.closest('[data-go]');
@@ -1000,7 +1096,7 @@
 
     document.addEventListener('pointerdown', (e) => {
       const pop = $('#popover');
-      if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('[data-act="add"], #btn-dates, #btn-more, [data-add]')) closePopover();
+      if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('[data-act="add"], [data-act="couple"], #btn-dates, #btn-more, [data-add]')) closePopover();
     });
     document.addEventListener('keydown', (e) => {
       const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
@@ -1041,15 +1137,20 @@
       showMessage('<b>Open the tree with “start.command”</b><br>Double-click <code>start.command</code> in this folder — it opens the tree in your browser, ready to edit.');
       return;
     }
+    state.editable = await detectEditing();
     let data;
     try {
-      const r = await fetch('data/family.json', { cache: 'no-store' });
-      data = await r.json();
+      if (state.editable) {
+        const res = await (await fetch('api/data', { cache: 'no-store' })).json();
+        data = res.data;
+        state.version = res.version;
+      } else {
+        data = await (await fetch('data/family.json', { cache: 'no-store' })).json();
+      }
     } catch (e) {
       showMessage('<b>Could not load the family data.</b><br>Check that data/family.json exists and is valid.');
       return;
     }
-    state.editable = await detectEditing();
     document.body.classList.toggle('editing', state.editable);
     state.tree = new Tree(data);
     state.focus = { union: data.root };
@@ -1057,7 +1158,12 @@
     bind();
     render();
     fitAll();
-    if (state.editable) { setStatus('Saved'); refreshPublish(); }
+    if (state.editable) {
+      setStatus('Saved');
+      refreshPublish();
+      window.addEventListener('focus', checkForOutsideChanges);
+      document.addEventListener('visibilitychange', checkForOutsideChanges);
+    }
   }
 
   init();
