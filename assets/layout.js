@@ -2,7 +2,7 @@
 (function () {
   const FT = (window.FT = window.FT || {});
 
-  const CARD_W = 204, CARD_H = 64, COUPLE_GAP = 46, SIB_GAP = 18, GROUP_GAP = 52, ROW_GAP = 88;
+  const CARD_W = 204, CARD_H = 64, COUPLE_GAP = 46, SIB_GAP = 18, GROUP_GAP = 34, ROW_GAP = 88;
   const ROW_H = CARD_H + ROW_GAP;
 
   // focus: { union } or { person }.  view: { down: {unionId: true}, up: {personId: bool} }
@@ -245,6 +245,73 @@
       }
     } };
 
+    // Straight lines: going up from the centre row, parents sit exactly above their children;
+    // going down, children sit exactly below their parents. Where both can't be true, the more
+    // important line stays straight and the bend goes in one place rather than everywhere.
+    const RANK = { root: 3, ancestor: 2, child: 1, spouse: 0 };
+    const rankOf = (p) => RANK[reach[p]] || 0;
+    const placeRow = (g, desired, prio) => {
+      const r = rows[g], n = r.length;
+      const off = [0];
+      r.forEach((u, i) => off.push(off[i] + unitW(u) + (rowGaps[g][i] || 0)));
+      const pos = new Array(n), placed = new Array(n).fill(false);
+      const order = [...Array(n).keys()].sort((a, b) => (prio[b] - prio[a]) || (Math.abs(desired[a]) - Math.abs(desired[b])));
+      for (const i of order) {
+        let lo = -Infinity, hi = Infinity;
+        for (let j = i - 1; j >= 0; j--) if (placed[j]) { lo = pos[j] + off[i] - off[j]; break; }
+        for (let j = i + 1; j < n; j++) if (placed[j]) { hi = pos[j] - (off[j] - off[i]); break; }
+        pos[i] = Math.min(hi, Math.max(lo, desired[i]));
+        placed[i] = true;
+      }
+      r.forEach((u, i) => { ux[u.id] = pos[i]; });
+    };
+    // Where a unit should be for its children (only the most important child family counts).
+    const upTarget = (u) => {
+      let best = null;
+      for (const uid of cu[u.id]) {
+        const kids = visChildren(uid);
+        const score = Math.max(...kids.map(rankOf)) * 100 + kids.length;
+        if (!best || score > best.score) best = { uid, score };
+      }
+      if (!best) return { x: ux[u.id], prio: 0 };
+      return { x: ux[u.id] + span(best.uid) - unionCenter(best.uid), prio: 1 + Math.floor(best.score / 100) };
+    };
+    // Where a unit should be for its parents: its sibling group packed and centred under them.
+    const downTarget = (u) => {
+      let best = null;
+      for (const m of u.members) {
+        const pu = visParentUnion(m);
+        if (!pu || unionCenter(pu) == null || !tree.union(pu).partners.some(vis)) continue;
+        const score = rankOf(m);
+        if (!best || score > best.score) best = { pu, score };
+      }
+      if (!best) return { x: ux[u.id], prio: 0 };
+      const ku = [...new Set(visChildren(best.pu).map((c) => unitOf[c]))].filter((k) => k.gen === u.gen).sort((a, b) => ux[a.id] - ux[b.id]);
+      let x = 0, lo = Infinity, hi = -Infinity;
+      const rel = {};
+      for (const k of ku) { rel[k.id] = x; x += unitW(k) + SIB_GAP; }
+      for (const c of visChildren(best.pu)) {
+        if (!(unitOf[c].id in rel)) continue;
+        const cc = rel[unitOf[c].id] + unitOf[c].members.indexOf(c) * (CARD_W + COUPLE_GAP) + CARD_W / 2;
+        lo = Math.min(lo, cc); hi = Math.max(hi, cc);
+      }
+      return { x: rel[u.id] + unionCenter(best.pu) - (lo + hi) / 2, prio: 1 + best.score };
+    };
+    function straighten() {
+      const up = gens.filter((g) => g < 0).sort((a, b) => b - a);
+      const downRows = gens.filter((g) => g >= 0).sort((a, b) => a - b);
+      for (let round = 0; round < 3; round++) {
+        for (const g of up) {
+          const t = rows[g].map(upTarget);
+          placeRow(g, t.map((o) => o.x), t.map((o) => o.prio));
+        }
+        for (const g of downRows) {
+          const t = rows[g].map((u) => (u.members.some((m) => reach[m] === 'root') ? { x: ux[u.id], prio: 9 } : downTarget(u)));
+          placeRow(g, t.map((o) => o.x), t.map((o) => o.prio));
+        }
+      }
+    }
+
     // Put each group of siblings in the order of their parents above, so lines don't cross
     // (e.g. half-siblings from a father's other relationships end up under that relationship).
     const reorder = () => {
@@ -268,6 +335,7 @@
     settle(60);
     reorder();
     settle(140);
+    straighten();
 
     // ---- 5. output ----
     const nodes = {};
