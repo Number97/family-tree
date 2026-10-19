@@ -48,6 +48,43 @@
         (adj[ps[1]] = adj[ps[1]] || []).push(ps[0]);
       }
     }
+    // Couples whose children carry the family line (towards the centre couple).
+    const lineEdge = new Set();
+    for (const uid of visU) {
+      const u = tree.union(uid), ps = u.partners.filter(vis);
+      if (ps.length === 2 && u.children.some((c) => reach[c] === 'root' || reach[c] === 'ancestor')) {
+        lineEdge.add(ps[0] + '|' + ps[1]); lineEdge.add(ps[1] + '|' + ps[0]);
+      }
+    }
+    function bestPath(comp) {
+      if (comp.length === 1) return comp.slice();
+      const score = (path) => {
+        let sc = path.length * 10;
+        for (let i = 1; i < path.length; i++) if (lineEdge.has(path[i - 1] + '|' + path[i])) sc += 100;
+        return sc;
+      };
+      let best = null;
+      if (comp.length <= 12) {
+        const walk = (path, used) => {
+          if (!best || score(path) > score(best)) best = path.slice();
+          for (const y of adj[path[path.length - 1]] || []) {
+            if (used.has(y)) continue;
+            used.add(y); path.push(y); walk(path, used); path.pop(); used.delete(y);
+          }
+        };
+        for (const start of comp) walk([start], new Set([start]));
+      } else {
+        const end = comp.find((x) => (adj[x] || []).length <= 1) || comp[0];
+        best = [end];
+        const used = new Set([end]);
+        for (let cur = end; ;) {
+          const nxt = (adj[cur] || []).find((y) => !used.has(y));
+          if (!nxt) break;
+          best.push(nxt); used.add(nxt); cur = nxt;
+        }
+      }
+      return best;
+    }
     const unitOf = {}, units = [];
     for (const p of order) {
       if (unitOf[p]) continue;
@@ -56,28 +93,25 @@
         const x = stack.pop(); comp.push(x);
         for (const y of adj[x] || []) if (!seen.has(y)) { seen.add(y); stack.push(y); }
       }
-      // Walk the chain from one end so partners stay next to each other.
-      const end = comp.find((x) => (adj[x] || []).length <= 1) || comp[0];
-      const path = [end], used = new Set([end]);
-      let cur = end;
-      for (;;) {
-        const nxt = (adj[cur] || []).find((y) => !used.has(y));
-        if (!nxt) break;
-        path.push(nxt); used.add(nxt); cur = nxt;
-      }
-      for (const x of comp) if (!used.has(x)) path.push(x);
-      const unit = { id: units.length, members: path, gen: gen[p], emitted: false };
+      // Partners stand side by side in a chain. When someone has more partners than fit
+      // next to them, keep the couple the family line runs through together, and put the
+      // rest ("extra") at the outer end, joined with a bracket.
+      const path = bestPath(comp);
+      const extra = comp.filter((x) => !path.includes(x));
+      const unit = { id: units.length, path, extra, members: path.concat(extra), gen: gen[p], emitted: false };
       units.push(unit);
-      for (const x of path) unitOf[x] = unit;
+      for (const x of comp) unitOf[x] = unit;
     }
 
     // ---- 3. left-to-right order within each row ----
     const rows = {};
     const doneU = new Set();
+    let phase = 'L';
     const emitUnit = (p, anchor, pair) => {
       const unit = unitOf[p];
       if (unit.emitted) return unit;
-      const m = unit.members;
+      const m = unit.path;
+      if (!m.includes(p)) p = m.find((x) => (adj[p] || []).includes(x)) || m[0];
       const i = m.indexOf(p);
       let flip;
       if (pair && m.includes(pair[0]) && m.includes(pair[1]) && m.indexOf(pair[0]) !== m.indexOf(pair[1])) {
@@ -86,6 +120,17 @@
         flip = anchor === 'left' ? i > m.length - 1 - i : i < m.length - 1 - i;
       }
       if (flip) m.reverse();
+      // For your side the line couple sits at the inner (right) end; mirrored for the other side.
+      if (phase !== 'C' && m.length > 2) {
+        const idx = m.map((x, k) => (k > 0 && lineEdge.has(m[k - 1] + '|' + x) ? k : -1)).filter((k) => k > 0);
+        if (idx.length) {
+          const mid = (idx[0] + idx[idx.length - 1] - 1) / 2;
+          const nearRight = mid > (m.length - 1) / 2;
+          if ((phase === 'L' && !nearRight) || (phase === 'R' && nearRight)) m.reverse();
+        }
+      }
+      unit.members = phase === 'L' ? unit.extra.concat(m) : m.concat(unit.extra);
+      unit.side = phase;
       unit.emitted = true;
       (rows[unit.gen] = rows[unit.gen] || []).push(unit);
       return unit;
@@ -142,9 +187,15 @@
 
     const [first, ...rest] = rootPartners.filter(vis);
     if (first) {
-      side(first, 'L', rootPartners.length === 2 ? rootPartners : null);
+      phase = 'L';
+      const pu0 = visParentUnion(first);
+      if (pu0) { doneU.add(pu0); up(pu0, 'L'); sibsOf(pu0, first).forEach((s) => subtree(s, 'L')); }
+      phase = 'C';
+      const rootUnit = emitUnit(first, 'left', rootPartners.length === 2 ? rootPartners : null);
+      descend(rootUnit, 'R');
+      phase = 'R';
       for (const p of rest) side(p, 'R', rootPartners);
-      inLaws(unitOf[first], first, 'R');
+      inLaws(rootUnit, first, 'R');
     }
     for (const p of order) if (!unitOf[p].emitted) subtree(p, 'R');
 
@@ -297,12 +348,23 @@
       }
       return { x: rel[u.id] + unionCenter(best.pu) - (lo + hi) / 2, prio: 1 + best.score };
     };
+    function shareBend(r, t, g) {
+      const holds = (u) => u.members.some((m) => rootPartners.some((rp) => tree.parents(rp).includes(m)));
+      const idx = r.map((u, i) => (holds(u) ? i : -1)).filter((i) => i >= 0);
+      if (idx.length < 2) return;
+      const a = idx[0], b = idx[idx.length - 1];
+      let need = 0;
+      for (let i = a; i < b; i++) need += unitW(r[i]) + (rowGaps[g][i] || 0);
+      const short = need - (t[b].x - t[a].x);
+      if (short > 0) { t[a].x -= short / 2; t[b].x += short / 2; }
+    }
     function straighten() {
       const up = gens.filter((g) => g < 0).sort((a, b) => b - a);
       const downRows = gens.filter((g) => g >= 0).sort((a, b) => a - b);
       for (let round = 0; round < 3; round++) {
         for (const g of up) {
           const t = rows[g].map(upTarget);
+          if (g === -1) shareBend(rows[g], t, g);
           placeRow(g, t.map((o) => o.x), t.map((o) => o.prio));
         }
         for (const g of downRows) {
@@ -314,6 +376,7 @@
 
     // Put each group of siblings in the order of their parents above, so lines don't cross
     // (e.g. half-siblings from a father's other relationships end up under that relationship).
+    const SIDE = { L: 0, C: 1, R: 2 };
     const reorder = () => {
       for (const g of gens) {
         const r = rows[g];
@@ -321,13 +384,13 @@
         r.forEach((u, i) => {
           const pus = u.members.map(visParentUnion).filter((x) => x && tree.union(x).partners.some(vis));
           const key = pus.length ? 'u:' + pus[0] : 'x:' + u.id;
-          if (!blocks.has(key)) blocks.set(key, { units: [], first: i, x: pus.length ? unionCenter(pus[0]) : null });
+          if (!blocks.has(key)) blocks.set(key, { units: [], first: i, side: SIDE[u.side] ?? 1, x: pus.length ? unionCenter(pus[0]) : null });
           blocks.get(key).units.push(u);
         });
         for (const b of blocks.values()) {
           if (b.x == null) b.x = b.units.reduce((s, u) => s + ux[u.id] + unitW(u) / 2, 0) / b.units.length;
         }
-        const sorted = [...blocks.values()].sort((a, b) => (a.x - b.x) || (a.first - b.first));
+        const sorted = [...blocks.values()].sort((a, b) => (a.side - b.side) || (a.x - b.x) || (a.first - b.first));
         rows[g] = sorted.flatMap((b) => b.units);
         rowGaps[g] = rows[g].slice(0, -1).map((u, i) => gapBetween(u, rows[g][i + 1]));
       }

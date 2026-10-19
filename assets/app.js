@@ -344,7 +344,13 @@
           const cur = u.status || 'partner';
           const opt = (v, label) => `<option value="${v}"${cur === v ? ' selected' : ''}>${label}</option>`;
           const showDates = u.start || u.end || state.datesOpen === union;
-          h += `<div class="pblock"><a data-go="${q}">${esc(nameOf(q))}</a><div class="pctl">
+          // Children of either partner whose other parent is unknown: ask, never assume.
+          const maybe = [id, q].flatMap((x) => t.unionsOf(x)
+            .filter((v) => t.union(v).partners.length === 1)
+            .flatMap((v) => t.union(v).children.map((c) => ({ c, par: x }))));
+          const ask = maybe.map(({ c, par }) => `<div class="ask">Is ${esc(t.firstName(par === id ? q : id))} also ${esc(t.firstName(c))}\u2019s parent?
+            <button class="linkish" data-link-child="${c}" data-to="${union}">Yes, link them</button></div>`).join('');
+          h += `<div class="pblock"><a data-go="${q}">${esc(nameOf(q))}</a>${ask}<div class="pctl">
             <select data-u="${union}" data-uf="status">${opt('partner', 'Together')}${opt('married', 'Married')}${opt('separated', 'Not together anymore')}${cur === 'divorced' ? opt('divorced', 'Divorced') : ''}</select>
             ${showDates ? `<input class="mini" type="text" data-udate="${union}" data-ufield="start" placeholder="since" value="${esc(formatDate(u.start))}" title="When they got together (year is enough)">
             ${t.isEnded(union) ? `<input class="mini" type="text" data-udate="${union}" data-ufield="end" placeholder="until" value="${esc(formatDate(u.end))}" title="When it ended (year is enough)">` : ''}`
@@ -952,6 +958,11 @@
         const ask = (kind === 'child' && unions.length > 1) || (kind === 'half' && parents.length > 1);
         if (ask) { addMenu(pid, add.getBoundingClientRect(), kind); return; }
         addRelative(pid, kind, kind === 'child' ? unions[0] : kind === 'half' ? parents[0] : null);
+        return;
+      }
+      const link = e.target.closest('[data-link-child]');
+      if (link) {
+        mutate((t) => t.moveChild(link.dataset.linkChild, link.dataset.to));
         return;
       }
       const seg = e.target.closest('.seg button');
