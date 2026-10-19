@@ -252,6 +252,24 @@
       this.prune();
     }
 
+    // People reachable from the centre couple, optionally pretending `without` is gone.
+    connected(without) {
+      const seen = new Set(), stack = this.rootPartners().filter((p) => p !== without);
+      while (stack.length) {
+        const p = stack.pop();
+        if (seen.has(p) || p === without || !this.person(p)) continue;
+        seen.add(p);
+        const next = this.parents(p).concat(this.siblingsOf(p), this.partnersOf(p).map((o) => o.id), this.childrenOf(p));
+        for (const n of next) if (!seen.has(n)) stack.push(n);
+      }
+      return seen;
+    }
+    // People who would end up cut off from the tree if `pid` were removed.
+    strandedBy(pid) {
+      const before = this.connected(), after = this.connected(pid);
+      return [...before].filter((p) => p !== pid && !after.has(p));
+    }
+
     // Drop families that no longer connect anyone.
     prune() {
       for (const [uid, u] of Object.entries(this.data.unions)) {

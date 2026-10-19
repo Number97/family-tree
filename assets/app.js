@@ -164,6 +164,15 @@
   function render(anchorId) {
     const old = anchorId && state.L && state.L.nodes[anchorId];
     const before = old ? { x: old.x * state.cam.k + state.cam.x, y: old.y * state.cam.k + state.cam.y } : null;
+    // The person or couple the tree is centred on may have been deleted or undone.
+    const t = state.tree;
+    if ((state.focus.person && !t.person(state.focus.person)) || (state.focus.union && !t.union(state.focus.union))) {
+      state.focus = { union: t.data.root };
+    }
+    if (!t.union(state.focus.union) && !t.person(state.focus.person)) {
+      const first = Object.keys(t.data.people)[0];
+      state.focus = first ? { person: first } : state.focus;
+    }
     state.L = layout(state.tree, state.focus, state.view);
     draw();
     const now = anchorId && state.L.nodes[anchorId];
@@ -343,7 +352,8 @@
     const curParents = t.parents(id);
     if (curParents.length === 2) {
       for (const par of curParents) {
-        if (!options.some((o) => t.union(o.v).partners.length === 1 && t.union(o.v).partners[0] === par)) {
+        const hasSolo = options.some((o) => t.union(o.v) && t.union(o.v).partners.length === 1 && t.union(o.v).partners[0] === par);
+        if (!hasSolo) {
           options.push({ v: 'solo:' + par, label: nameOf(par) + ' only (other parent unknown)' });
         }
       }
@@ -445,7 +455,8 @@
     if (by && dy && dy < by) out.push('Death is before birth.');
     for (const par of t.parents(id)) {
       const py = FT.yearOf(P(par).birth);
-      if (by && py && by - py < 12) out.push(`Born only ${by - py} years after ${t.firstName(par)}.`);
+      if (by && py && by <= py) out.push(`Born before their parent ${t.firstName(par)}.`);
+      else if (by && py && by - py < 12) out.push(`Born only ${by - py} years after ${t.firstName(par)}.`);
       const pdy = FT.yearOf(P(par).death);
       if (by && pdy && by > pdy + 1) out.push(`Born after ${t.firstName(par)} died.`);
     }
@@ -545,11 +556,19 @@
   }
 
   function deletePerson(id) {
-    if (!confirm(`Delete ${nameOf(id)} from the tree?`)) return;
-    const anchor = state.tree.parents(id)[0] || state.tree.partnersOf(id)[0]?.id || state.tree.rootPartners()[0];
+    const t = state.tree;
+    const stranded = t.strandedBy(id);
+    let msg = `Delete ${nameOf(id)} from the tree?`;
+    if (stranded.length) {
+      const list = stranded.slice(0, 6).map(nameOf).join(', ') + (stranded.length > 6 ? ` and ${stranded.length - 6} more` : '');
+      msg += `\n\n${stranded.length === 1 ? 'This person is' : `These ${stranded.length} people are`} only connected through ${t.firstName(id)} and will be removed too:\n${list}\n\n(You can undo with ⌘Z.)`;
+    }
+    if (!confirm(msg)) return;
+    const anchor = [...t.parents(id), ...t.partnersOf(id).map((o) => o.id), ...t.childrenOf(id)].find((x) => !stranded.includes(x)) || t.rootPartners()[0];
     state.selected = null;
+    state.newPerson = null;
     $('#panel').hidden = true;
-    mutate((t) => t.removePerson(id), { anchor });
+    mutate((t) => { for (const x of [id, ...stranded]) t.removePerson(x); }, { anchor });
   }
 
   // ---------- saving & publishing (local only) ----------
