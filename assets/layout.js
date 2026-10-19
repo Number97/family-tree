@@ -2,7 +2,7 @@
 (function () {
   const FT = (window.FT = window.FT || {});
 
-  const CARD_W = 204, CARD_H = 64, COUPLE_GAP = 46, SIB_GAP = 18, GROUP_GAP = 34, ROW_GAP = 88;
+  const CARD_W = 204, CARD_H = 64, COUPLE_GAP = 46, SIB_GAP = 18, GROUP_GAP = 34, ROW_GAP = 104;
   const ROW_H = CARD_H + ROW_GAP;
 
   // focus: { union } or { person }.  view: { down: {unionId: true}, up: {personId: bool} }
@@ -197,7 +197,22 @@
       for (const p of rest) side(p, 'R', rootPartners);
       inLaws(rootUnit, first, 'R');
     }
+    phase = 'X';
     for (const p of order) if (!unitOf[p].emitted) subtree(p, 'R');
+    // Unfolded parents of in-laws etc.: take the side of the family they are attached to.
+    for (let pass = 0; pass < 4; pass++) {
+      for (const u of units) {
+        if (u.side !== 'X') continue;
+        const near = [];
+        for (const m of u.members) {
+          for (const uid of tree.unionsOf(m)) for (const c of visChildren(uid)) near.push(unitOf[c]);
+          const pu = visParentUnion(m);
+          if (pu) for (const q of tree.union(pu).partners.filter(vis)) near.push(unitOf[q]);
+        }
+        const known = near.find((v) => v && v !== u && v.side !== 'X');
+        if (known) u.side = known.side === 'C' ? 'R' : known.side;
+      }
+    }
 
     // ---- 4. x positions ----
     const gens = Object.keys(rows).map(Number).sort((a, b) => a - b);
@@ -378,26 +393,50 @@
     // (e.g. half-siblings from a father's other relationships end up under that relationship).
     const SIDE = { L: 0, C: 1, R: 2 };
     const reorder = () => {
-      for (const g of gens) {
+      const sortRow = (g, keyOf) => {
         const r = rows[g];
         const blocks = new Map();
         r.forEach((u, i) => {
           const pus = u.members.map(visParentUnion).filter((x) => x && tree.union(x).partners.some(vis));
-          const key = pus.length ? 'u:' + pus[0] : 'x:' + u.id;
-          if (!blocks.has(key)) blocks.set(key, { units: [], first: i, side: SIDE[u.side] ?? 1, x: pus.length ? unionCenter(pus[0]) : null });
-          blocks.get(key).units.push(u);
+          const id = pus.length ? 'u:' + pus[0] : 'x:' + u.id;
+          if (!blocks.has(id)) blocks.set(id, { units: [], first: i, side: SIDE[u.side] ?? 1, strong: [], weak: [] });
+          const b = blocks.get(id);
+          b.units.push(u);
+          const k = keyOf(u, pus);
+          if (k) (k.strong ? b.strong : b.weak).push(k.x);
         });
+        const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
         for (const b of blocks.values()) {
-          if (b.x == null) b.x = b.units.reduce((s, u) => s + ux[u.id] + unitW(u) / 2, 0) / b.units.length;
+          // A family that leads down to someone decides where its group goes.
+          b.x = b.strong.length ? mean(b.strong) : b.weak.length ? mean(b.weak)
+            : mean(b.units.map((u) => ux[u.id] + unitW(u) / 2));
         }
         const sorted = [...blocks.values()].sort((a, b) => (a.side - b.side) || (a.x - b.x) || (a.first - b.first));
         rows[g] = sorted.flatMap((b) => b.units);
         rowGaps[g] = rows[g].slice(0, -1).map((u, i) => gapBetween(u, rows[g][i + 1]));
+      };
+      // Above the centre row: a family sits above the child it leads to.
+      for (const g of gens.filter((x) => x < 0).sort((a, b) => b - a)) {
+        sortRow(g, (u, pus) => {
+          let best = null;
+          for (const uid of cu[u.id]) {
+            const kids = visChildren(uid).filter((c) => gen[c] === g + 1);
+            if (!kids.length) continue;
+            const score = Math.max(...kids.map(rankOf));
+            if (!best || score > best.score) best = { uid, score };
+          }
+          if (best) return { x: span(best.uid), strong: true };
+          return pus.length ? { x: unionCenter(pus[0]), strong: false } : null;
+        });
       }
+      // From the centre row down: children sit below their parents.
+      for (const g of gens.filter((x) => x >= 0)) sortRow(g, (u, pus) => (pus.length ? { x: unionCenter(pus[0]), strong: true } : null));
     };
     settle(60);
     reorder();
-    settle(140);
+    settle(60);
+    reorder();
+    settle(120);
     straighten();
 
     // ---- 5. output ----
@@ -450,7 +489,7 @@
         u.lane = lane;
       }
       if (ends.length > 1) {
-        const step = Math.min(14, (ROW_GAP - 40) / (ends.length - 1));
+        const step = Math.min(20, (ROW_GAP - 44) / (ends.length - 1));
         for (const u of list) u.busY += (u.lane - (ends.length - 1) / 2) * step;
       }
     }
