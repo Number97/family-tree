@@ -54,6 +54,29 @@
       "birth": "1939-09-29",
       "deceased": true,
       "death": "2026-09-27"
+    },
+    "pxj9e98": {
+      "name": "Lucreția Dobrescu",
+      "gender": "f",
+      "birth": "1942-01-22"
+    },
+    "py56hkf": {
+      "name": "Ilinca Popovici",
+      "gender": "f",
+      "deceased": true
+    },
+    "p2vfl96": {
+      "name": "Corina Daniela Popovici",
+      "gender": "f",
+      "birth": "1968-02-29"
+    },
+    "pfpyg58": {
+      "name": "Ernestine Ines Popovici",
+      "birth": "1991-10-15"
+    },
+    "p651u0l": {
+      "name": "Claudiu",
+      "gender": "m"
     }
   },
   "unions": {
@@ -103,13 +126,37 @@
         "pkdtqzj"
       ]
     },
-    "uvxb8wy": {
+    "u1eeik6": {
       "partners": [
-        "pgu710k"
+        "pgu710k",
+        "pxj9e98"
       ],
       "children": [
         "pyhp0hj"
       ]
+    },
+    "uc5a0c2": {
+      "partners": [
+        "pw653yc",
+        "py56hkf"
+      ],
+      "children": [
+        "pfpyg58"
+      ]
+    },
+    "ui63681": {
+      "partners": [
+        "pw653yc",
+        "p2vfl96"
+      ],
+      "children": []
+    },
+    "u5xyei8": {
+      "partners": [
+        "pfpyg58",
+        "p651u0l"
+      ],
+      "children": []
     }
   }
 }
