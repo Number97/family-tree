@@ -999,6 +999,58 @@
     "ps02ff0": {
       "name": "Fata 2",
       "gender": "f"
+    },
+    "px9sqvq": {
+      "name": "Alexandru Cucu",
+      "gender": "m",
+      "birth": "1980"
+    },
+    "p5zlsqk": {
+      "name": "Laura Țurcan",
+      "gender": "f",
+      "birthName": "Cucu",
+      "birth": "1976"
+    },
+    "p48newi": {
+      "name": "Gabriel Țurcan",
+      "gender": "m",
+      "birthName": "1976"
+    },
+    "p9j21gl": {
+      "name": "Tudor Țurcan",
+      "gender": "m",
+      "birth": "2004"
+    },
+    "p1hkvtw": {
+      "name": "Maria Țurcan",
+      "gender": "f",
+      "birth": "2008"
+    },
+    "psv5lcm": {
+      "name": "Elena",
+      "gender": "f",
+      "birth": "2010"
+    },
+    "poxi9zq": {
+      "name": "Nicușor Cucu",
+      "birth": "1948",
+      "death": "1989",
+      "deceased": true,
+      "gender": "m"
+    },
+    "pn0ufxs": {
+      "name": "Baiat 1",
+      "gender": "m"
+    },
+    "pgp9qqx": {
+      "name": "Ion Cucu",
+      "gender": "m",
+      "deceased": true
+    },
+    "p7lizes": {
+      "name": "Maria Cucu",
+      "gender": "f",
+      "deceased": true
     }
   },
   "unions": {
@@ -1194,7 +1246,10 @@
         "p98z3ec",
         "p1i4h85"
       ],
-      "children": []
+      "children": [
+        "p5zlsqk",
+        "px9sqvq"
+      ]
     },
     "us0j8ht": {
       "partners": [
@@ -1768,6 +1823,36 @@
       "children": [
         "pybkl7w",
         "ps02ff0"
+      ]
+    },
+    "usl1rok": {
+      "partners": [
+        "p5zlsqk",
+        "p48newi"
+      ],
+      "children": [
+        "p9j21gl",
+        "p1hkvtw",
+        "psv5lcm"
+      ],
+      "status": "married"
+    },
+    "u6ou3mk": {
+      "partners": [
+        "poxi9zq"
+      ],
+      "children": [
+        "pn0ufxs"
+      ]
+    },
+    "u0a0bcj": {
+      "partners": [
+        "pgp9qqx",
+        "p7lizes"
+      ],
+      "children": [
+        "poxi9zq",
+        "p1i4h85"
       ]
     }
   }
