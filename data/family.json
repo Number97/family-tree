@@ -167,6 +167,61 @@
       "name": "Hélène Zhang",
       "gender": "f",
       "birth": "1998"
+    },
+    "p6kwf7o": {
+      "name": "Georgeta Voineasa",
+      "gender": "f",
+      "birth": "1942"
+    },
+    "pbu9pzb": {
+      "name": "Petru Voineasa",
+      "gender": "m",
+      "deceased": true
+    },
+    "pskl63v": {
+      "name": "Rada Enciu",
+      "gender": "f",
+      "birth": "1916",
+      "deceased": true,
+      "death": "1991"
+    },
+    "pqvhk2d": {
+      "name": "Dumitru Enciu",
+      "gender": "m",
+      "birth": "1912",
+      "death": "1947",
+      "deceased": true,
+      "notes": "Passed away in a plane crash"
+    },
+    "pdnc0c6": {
+      "name": "Vergil Enciu",
+      "gender": "m",
+      "birth": "1938-02-23",
+      "death": "2018",
+      "deceased": true
+    },
+    "pkivou1": {
+      "name": "Corneliu Enciu",
+      "gender": "m",
+      "birth": "1941",
+      "death": "2017",
+      "deceased": true
+    },
+    "pmytowz": {
+      "name": "Mihalache Vasile",
+      "gender": "m",
+      "birth": "1923",
+      "deceased": true
+    },
+    "p98z3ec": {
+      "name": "Iuliana Cucu",
+      "birthName": "Vasile",
+      "gender": "f",
+      "birth": "1955-01-10"
+    },
+    "p1i4h85": {
+      "name": "Iulian Cucu",
+      "gender": "m"
     }
   },
   "unions": {
@@ -324,6 +379,44 @@
       "children": [
         "ptzcz2b"
       ]
+    },
+    "uuk6gjp": {
+      "partners": [
+        "p6kwf7o",
+        "pbu9pzb"
+      ],
+      "children": [
+        "p2vfl96"
+      ]
+    },
+    "ujqktxc": {
+      "partners": [
+        "pskl63v",
+        "pqvhk2d"
+      ],
+      "children": [
+        "pdnc0c6",
+        "pkivou1",
+        "pxj9e98"
+      ],
+      "status": "separated"
+    },
+    "uakfypx": {
+      "partners": [
+        "pskl63v",
+        "pmytowz"
+      ],
+      "children": [
+        "p98z3ec"
+      ],
+      "status": "separated"
+    },
+    "umcjpux": {
+      "partners": [
+        "p98z3ec",
+        "p1i4h85"
+      ],
+      "children": []
     }
   }
 }
