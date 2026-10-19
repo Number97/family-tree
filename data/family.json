@@ -105,6 +105,58 @@
       "name": "Ana Dinu",
       "gender": "f",
       "birth": "2006-08-17"
+    },
+    "pv7hdug": {
+      "name": "Matei",
+      "gender": "m"
+    },
+    "p7xxzhl": {
+      "name": "Lea Zhang",
+      "gender": "f"
+    },
+    "ptlrn8o": {
+      "name": "Andrei",
+      "gender": "m",
+      "deceased": true,
+      "death": "1998",
+      "birth": "1992"
+    },
+    "p25icbi": {
+      "name": "Papa Zhang",
+      "gender": "m",
+      "deceased": true
+    },
+    "p46dngt": {
+      "name": "NaiNai",
+      "gender": "f"
+    },
+    "pwtxanx": {
+      "name": "Ieie",
+      "gender": "m"
+    },
+    "pz60doz": {
+      "name": "Tea uncle",
+      "gender": "m"
+    },
+    "p6zh3l7": {
+      "name": "Tea Uncle Wife",
+      "gender": "f"
+    },
+    "p59hpds": {
+      "name": "Skinny Tall Cousin",
+      "gender": "m"
+    },
+    "p6ke25c": {
+      "name": "XiaoYu Mom",
+      "gender": "f"
+    },
+    "p1gx1n7": {
+      "name": "Rich Xiao Yu Father",
+      "gender": "m"
+    },
+    "ptzcz2b": {
+      "name": "Yu Han Cousin",
+      "gender": "m"
     }
   },
   "unions": {
@@ -125,7 +177,7 @@
       "children": [
         "p0"
       ],
-      "status": "married",
+      "status": "separated",
       "start": "2003"
     },
     "u7dpssu": {
@@ -136,7 +188,7 @@
       "children": [
         "pw653yc"
       ],
-      "status": "married"
+      "status": "separated"
     },
     "u9lctwi": {
       "partners": [
@@ -161,7 +213,8 @@
       ],
       "children": [
         "pyhp0hj"
-      ]
+      ],
+      "status": "married"
     },
     "uc5a0c2": {
       "partners": [
@@ -170,7 +223,8 @@
       ],
       "children": [
         "pfpyg58"
-      ]
+      ],
+      "status": "separated"
     },
     "ui63681": {
       "partners": [
@@ -179,7 +233,8 @@
       ],
       "children": [
         "pxl1jah"
-      ]
+      ],
+      "status": "married"
     },
     "u5xyei8": {
       "partners": [
@@ -197,7 +252,8 @@
       ],
       "children": [
         "phzf0w8"
-      ]
+      ],
+      "status": "separated"
     },
     "uhpepem": {
       "partners": [
@@ -206,6 +262,61 @@
       ],
       "children": [
         "pkj8ew2"
+      ],
+      "status": "separated"
+    },
+    "u75qiw6": {
+      "partners": [
+        "pyhp0hj",
+        "pv7hdug"
+      ],
+      "children": [
+        "ptlrn8o"
+      ],
+      "status": "separated"
+    },
+    "uva06pi": {
+      "partners": [
+        "p7xxzhl"
+      ],
+      "children": [
+        "p1"
+      ]
+    },
+    "ucg6a0h": {
+      "partners": [
+        "p7xxzhl",
+        "p25icbi"
+      ],
+      "children": []
+    },
+    "uvsvrj2": {
+      "partners": [
+        "p46dngt",
+        "pwtxanx"
+      ],
+      "children": [
+        "p25icbi",
+        "pz60doz",
+        "p6ke25c"
+      ]
+    },
+    "ubzicmg": {
+      "partners": [
+        "pz60doz",
+        "p6zh3l7"
+      ],
+      "children": [
+        "p59hpds"
+      ]
+    },
+    "ugt0p89": {
+      "partners": [
+        "p6ke25c",
+        "p1gx1n7"
+      ],
+      "children": [
+        "ptzcz2b"
       ]
     }
   }
