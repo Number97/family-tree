@@ -6,8 +6,6 @@
   --line: #e4dfd4;
   --accent: #2f2a22;
   --gold: #d6b25e;
-  --blue: #4f7cac;
-  --rose: #c0607e;
   --danger: #b4483c;
   --radius: 12px;
   --shadow: 0 8px 30px rgba(38, 35, 30, .12), 0 1px 3px rgba(38, 35, 30, .08);
@@ -95,8 +93,8 @@ body:not(.editing) .edit-only { display: none !important; }
   width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; flex: none;
   color: #fff; font-weight: 600; background: #9a9488;
 }
-.p-av.side-a { background: var(--blue); } .p-av.side-b { background: var(--rose); } .p-av.side-both { background: #7d68b3; }
-.p-av.dead { background: #b7b2a8; }
+.p-av.g-m { background: #5a84b0; } .p-av.g-f { background: #c46f88; }
+.p-av.dead { background: #c2bdb3; } .p-av.dead.g-m { background: #a9bdd3; } .p-av.dead.g-f { background: #dcb0bd; }
 .p-head h2 { margin: 2px 0 0; font-size: 18px; line-height: 1.25; letter-spacing: -.01em; word-break: break-word; }
 .p-head .p-rel { color: var(--muted); font-size: 13px; }
 .p-head .close { margin-left: auto; margin-top: -4px; margin-right: -6px; }

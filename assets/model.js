@@ -187,24 +187,16 @@
       if (uid) {
         const u = this.union(uid);
         u.partners.push(np);
-        if (u.partners.length === 2 && !u.status) u.status = 'married';
         this.reindex();
       } else {
         this.addUnion([np], [pid]);
       }
       return np;
     }
-    // With coParentOf, the new partner becomes the other parent in that single-parent family.
-    addPartner(pid, coParentOf) {
+    // A partner is always a new, separate relationship; it never makes them a parent of existing children.
+    addPartner(pid) {
       const np = this.addPerson();
-      if (coParentOf && this.union(coParentOf) && this.union(coParentOf).partners.length === 1) {
-        const u = this.union(coParentOf);
-        u.partners.push(np);
-        u.status = u.status || 'married';
-        this.reindex();
-      } else {
-        this.addUnion([pid, np], [], { status: 'married' });
-      }
+      this.addUnion([pid, np], []);
       return np;
     }
     // A child of `parent` with someone else (other parent unknown for now).
@@ -214,7 +206,12 @@
       return ns;
     }
     // Make `pid` a child of another couple, e.g. to turn a sibling into a half-sibling.
+    // toUnion may be 'solo:<parentId>' for "child of that parent only, other parent unknown".
     moveChild(pid, toUnion) {
+      if (String(toUnion).startsWith('solo:')) {
+        const par = toUnion.slice(5);
+        toUnion = this.unionsOf(par).find((u) => this.union(u).partners.length === 1) || this.addUnion([par], []);
+      }
       const from = this.parentUnion(pid);
       if (from === toUnion || !this.union(toUnion)) return;
       if (from) this.union(from).children = this.union(from).children.filter((c) => c !== pid);
@@ -366,17 +363,6 @@
       }
       rels.sort((a, b) => (b.rel.blood - a.rel.blood) || (a.rel.dist - b.rel.dist));
       return this.firstName(rels[0].r) + '’s ' + rels[0].rel.term;
-    }
-
-    // Which side of the family: 'a', 'b', 'both' or '' (married in / unrelated).
-    side(x) {
-      const roots = this.rootPartners();
-      const ia = roots[0] && this.blood(x, roots[0]);
-      const ib = roots[1] && this.blood(x, roots[1]);
-      if (ia && ib) return 'both';
-      if (ia) return 'a';
-      if (ib) return 'b';
-      return '';
     }
   }
 

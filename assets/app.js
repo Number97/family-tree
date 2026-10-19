@@ -90,7 +90,7 @@
 
   function yearsText(p) {
     const b = shortYear(p.birth), d = shortYear(p.death);
-    if (p.deceased || p.death) return (b || '?') + ' – ' + (d || '?');
+    if (p.deceased || p.death) return b || d ? (b || '?') + ' – ' + (d || '?') : 'passed away';
     return b ? 'b. ' + b : '';
   }
 
@@ -232,9 +232,8 @@
     const selected = state.selected;
     for (const [id, n] of Object.entries(L.nodes)) {
       const p = P(id);
-      const side = t.side(id);
       const isDead = dead(id);
-      const cls = ['person', side ? 'side-' + side : '', isDead ? 'dead' : '', L.rootPartners.includes(id) && state.focus.union ? 'center' : '', id === selected ? 'sel' : ''].join(' ');
+      const cls = ['person', p.gender ? 'g-' + p.gender : '', isDead ? 'dead' : '', L.rootPartners.includes(id) && state.focus.union ? 'center' : '', id === selected ? 'sel' : ''].join(' ');
       const yrs = yearsText(p);
       const nl = nameLines(p.name || 'New person', CARD_W - 74);
       let s = `<g class="${cls}" data-id="${id}" transform="translate(${n.x},${n.y})">`;
@@ -246,7 +245,6 @@
         s += `<text class="nm${p.name ? '' : ' empty'}" x="54" y="${top + nl.size + i * lineH}" style="font-size:${nl.size}px">${esc(line)}</text>`;
       });
       if (yrs) s += `<text class="yr" x="54" y="${top + nl.lines.length * lineH + 13}">${esc(yrs)}</text>`;
-      if (isDead) s += `<text class="cross" x="${CARD_W - 14}" y="${CARD_H - 12}">†</text>`;
       if (state.editable) {
         s += `<path class="pencil" transform="translate(${CARD_W - 22},8)" d="M2 11.5V14h2.5l7.4-7.4-2.5-2.5L2 11.5zM13.7 4.8a.7.7 0 0 0 0-1L12.2 2.3a.7.7 0 0 0-1 0L10 3.5 12.5 6l1.2-1.2z"/>`;
         s += `<g class="add" data-act="add" data-p="${id}" transform="translate(${CARD_W},${CARD_H / 2})"><title>Add a relative</title><circle r="11"/><path d="M-4.5 0H4.5M0 -4.5V4.5"/></g>`;
@@ -309,10 +307,9 @@
     const id = state.selected, el = $('#modal');
     if (!id) { $('#panel').hidden = true; el.innerHTML = ''; return; }
     const t = state.tree, p = P(id), isDead = dead(id);
-    const side = t.side(id);
     const rel = t.relationLabel(id);
-    let h = `<div class="p-head"><div class="p-av ${side ? 'side-' + side : ''} ${isDead ? 'dead' : ''}">${esc(initials(p.name))}</div>`;
-    h += `<div><h2 id="p-name">${esc(p.name || 'New person')}${isDead ? '<span class="tag">† deceased</span>' : ''}</h2><div class="p-rel">${esc(rel)}</div></div>`;
+    let h = `<div class="p-head"><div class="p-av ${p.gender ? 'g-' + p.gender : ''} ${isDead ? 'dead' : ''}">${esc(initials(p.name))}</div>`;
+    h += `<div><h2 id="p-name">${esc(p.name || 'New person')}${isDead ? '<span class="tag">passed away</span>' : ''}</h2><div class="p-rel">${esc(rel)}</div></div>`;
     h += `<button class="icon close" data-act="close" title="Close"><svg class="i"><use href="#i-x"/></svg></button></div>`;
 
     if (state.editable) h += editForm(id, p);
@@ -328,9 +325,9 @@
       for (const { id: q, union } of partners) {
         const u = t.union(union);
         if (state.editable) {
-          const opt = (v, label) => `<option value="${v}"${(u.status || 'partner') === v ? ' selected' : ''}>${label}</option>`;
+          const opt = (v, label) => `<option value="${v}"${(u.status || '') === v ? ' selected' : ''}>${label}</option>`;
           h += `<div class="pblock"><a data-go="${q}">${esc(nameOf(q))}</a><div class="pctl">
-            <select data-u="${union}" data-uf="status">${opt('married', 'Married')}${opt('partner', 'Together')}${opt('divorced', 'Divorced')}${opt('separated', 'Separated')}</select>
+            <select data-u="${union}" data-uf="status">${opt('', 'Status unknown')}${opt('married', 'Married')}${opt('partner', 'Together')}${opt('divorced', 'Divorced')}${opt('separated', 'Separated')}</select>
             <input class="mini" type="text" data-udate="${union}" data-ufield="start" placeholder="since" value="${esc(formatDate(u.start))}" title="When they got together or married">
             ${t.isEnded(union) ? `<input class="mini" type="text" data-udate="${union}" data-ufield="end" placeholder="until" value="${esc(formatDate(u.end))}" title="When it ended">` : ''}
           </div></div>`;
@@ -342,10 +339,18 @@
       h += '</div>';
     }
     h += group('Parents', t.parents(id));
-    const options = t.parentOptions(id);
+    const options = t.parentOptions(id).map((uid) => ({ v: uid, label: t.unionLabel(uid) }));
+    const curParents = t.parents(id);
+    if (curParents.length === 2) {
+      for (const par of curParents) {
+        if (!options.some((o) => t.union(o.v).partners.length === 1 && t.union(o.v).partners[0] === par)) {
+          options.push({ v: 'solo:' + par, label: nameOf(par) + ' only (other parent unknown)' });
+        }
+      }
+    }
     if (state.editable && options.length > 1) {
-      h += `<h3></h3><div><select data-move title="Which couple is this person the child of">${options.map((uid) =>
-        `<option value="${uid}"${uid === t.parentUnion(id) ? ' selected' : ''}>Child of ${esc(t.unionLabel(uid))}</option>`).join('')}</select></div>`;
+      h += `<h3></h3><div><select data-move title="Which couple is this person the child of">${options.map((o) =>
+        `<option value="${o.v}"${o.v === t.parentUnion(id) ? ' selected' : ''}>Child of ${esc(o.label)}</option>`).join('')}</select></div>`;
     }
     h += group('Children', t.childrenOf(id), ageHint);
     const sibs = t.siblingsDetailed(id);
@@ -378,7 +383,7 @@
   function partnerSummary(uid, self) {
     const t = state.tree, u = t.union(uid);
     const parts = [];
-    const word = { married: 'married', divorced: 'married', separated: 'together', partner: 'together' }[u.status || 'partner'];
+    const word = { married: 'married', divorced: 'married', separated: 'together', partner: 'together' }[u.status] || 'since';
     if (u.start) parts.push(word + ' ' + formatDate(u.start));
     else if (u.status === 'married') parts.push('married');
     if (t.isEnded(uid)) parts.push((u.status === 'divorced' ? 'divorced' : 'separated') + (u.end ? ' ' + formatDate(u.end) : ''));
@@ -472,9 +477,9 @@
     const id = state.selected;
     if (!id) return;
     const p = P(id), h = $('#p-name');
-    if (h) h.innerHTML = esc(p.name || 'New person') + (dead(id) ? '<span class="tag">† deceased</span>' : '');
+    if (h) h.innerHTML = esc(p.name || 'New person') + (dead(id) ? '<span class="tag">passed away</span>' : '');
     const av = $('#panel .p-av');
-    if (av) av.textContent = initials(p.name);
+    if (av) { av.textContent = initials(p.name); av.className = 'p-av' + (p.gender ? ' g-' + p.gender : '') + (dead(id) ? ' dead' : ''); }
   }
 
   function restore(json) {
@@ -503,7 +508,7 @@
     let nid = null;
     mutate((t) => {
       if (kind === 'parent') { nid = t.addParent(pid); state.view.up[pid] = false; }
-      else if (kind === 'partner') nid = t.addPartner(pid, ref);
+      else if (kind === 'partner') nid = t.addPartner(pid);
       else if (kind === 'child') {
         nid = t.addChild(pid, ref);
         delete state.view.down[t.parentUnion(nid)];
@@ -614,24 +619,11 @@
   }
   function closePopover() { $('#popover').hidden = true; }
 
-  // Single-parent families of pid that have children: a new partner might be their other parent.
-  function openFamilies(pid) {
-    const t = state.tree;
-    return t.unionsOf(pid).filter((uid) => t.union(uid).partners.length === 1 && t.union(uid).children.length);
-  }
-
   function addMenu(pid, rect, only) {
     const t = state.tree, show = (k) => !only || only === k;
-    const names = (ids) => ids.map((c) => esc(t.firstName(c))).join(', ');
     let h = `<div class="hd">Add to ${esc(t.firstName(pid))}</div>`;
     if (show('parent')) h += `<button class="item" data-add="parent" data-p="${pid}" ${t.parents(pid).length >= 2 ? 'disabled' : ''}>Parent</button>`;
-    if (show('partner')) {
-      const open = openFamilies(pid);
-      for (const uid of open) {
-        h += `<button class="item" data-add="partner" data-p="${pid}" data-ref="${uid}">Partner <span class="muted">other parent of ${names(t.union(uid).children)}</span></button>`;
-      }
-      h += `<button class="item" data-add="partner" data-p="${pid}">Partner${open.length ? ' <span class="muted">someone else</span>' : ''}</button>`;
-    }
+    if (show('partner')) h += `<button class="item" data-add="partner" data-p="${pid}">Partner</button>`;
     if (show('child')) {
       const unions = t.unionsOf(pid);
       if (unions.length <= 1) h += `<button class="item" data-add="child" data-p="${pid}" ${unions[0] ? `data-ref="${unions[0]}"` : ''}>Child</button>`;
@@ -851,7 +843,7 @@
       if (add) {
         const t = state.tree, pid = state.selected, kind = add.dataset.add;
         const unions = t.unionsOf(pid), parents = t.parents(pid);
-        const ask = (kind === 'child' && unions.length > 1) || (kind === 'partner' && openFamilies(pid).length) || (kind === 'half' && parents.length > 1);
+        const ask = (kind === 'child' && unions.length > 1) || (kind === 'half' && parents.length > 1);
         if (ask) { addMenu(pid, add.getBoundingClientRect(), kind); return; }
         addRelative(pid, kind, kind === 'child' ? unions[0] : kind === 'half' ? parents[0] : null);
         return;
@@ -909,7 +901,7 @@
         return;
       }
       if (el.dataset.uf === 'status') {
-        mutate((t) => { t.union(el.dataset.u).status = el.value; });
+        mutate((t) => { const u = t.union(el.dataset.u); if (el.value) u.status = el.value; else delete u.status; });
         return;
       }
       if (el.dataset.udate) {

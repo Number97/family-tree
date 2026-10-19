@@ -15,7 +15,8 @@ Our family tree, as a simple web page.
 4. **Complicated families:**
    - Every relationship is its own couple. Set it to Married, Together, Divorced or Separated, with "since" and "until" dates. Divorced or separated couples get a dotted line.
    - A marriage ended by death just needs the date of death on the person.
-   - Half-siblings: use **Add → Half-sibling**. For someone already in the tree, change **Child of …** in their window to the right couple.
+   - Half-siblings: use **Add → Half-sibling**. For someone already in the tree, change **Child of …** in their window to the right couple, or to one parent only.
+   - Adding a partner never makes them a parent of existing children. To add someone's other parent, use **Add → Parent** on the child.
 5. Everything saves automatically to `data/family.json`. Undo with ⌘Z.
 6. Press **Publish** when you're happy. This saves a version to GitHub, and the online page updates about a minute later.
 
@@ -31,16 +32,7 @@ To stop, close the terminal window (or press Ctrl+C in it).
 - **Birthdays:** the cake button shows upcoming birthdays and anniversaries.
 - **Downloads:** the ⋯ menu saves the tree as an image, as GEDCOM (for other genealogy apps), or as raw data.
 
-Colours show which side of the family someone is on:
-
-| Colour | Side |
-| --- | --- |
-| Blue | Ernest's side |
-| Pink | Your partner's side |
-| Purple | Both, i.e. your children |
-| Grey avatar | Married into the family |
-
-Cards of people who have passed away are greyed out and marked with †.
+The avatar colour shows whether someone is a man (blue) or a woman (pink); grey means not set. People who have passed away have a soft grey card and paler colours, and their years read like 1940 – 2019.
 
 ## Data
 
