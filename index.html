@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Family Tree</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f2a22'/%3E%3Cpath d='M16 9v14M9 23v-4h14v4M16 13h0' stroke='%23f6f5f1' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='8' r='3' fill='%23d6b25e'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+    <symbol id="i-center" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></symbol>
+    <symbol id="i-cake" viewBox="0 0 24 24"><path d="M4 20.5h16M5.5 20.5v-6.5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v6.5M5.5 15.5c2.2 1.4 4.4 1.4 6.5 0s4.3-1.4 6.5 0M12 12V8.5"/><path d="M12 6.2c.8 0 1.4-.6 1.4-1.4 0-1-1.4-2.3-1.4-2.3s-1.4 1.3-1.4 2.3c0 .8.6 1.4 1.4 1.4z" fill="currentColor"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  </svg>
+
+  <header class="bar">
+    <div class="brand">
+      <span class="title" id="title">Family Tree</span>
+      <span class="sub" id="subtitle"></span>
+    </div>
+    <div class="search">
+      <svg class="i"><use href="#i-search"/></svg>
+      <input id="search" type="search" placeholder="Search" autocomplete="off" spellcheck="false">
+      <div class="results" id="results" hidden></div>
+    </div>
+    <div class="actions">
+      <span class="edit-only status" id="status"></span>
+      <button class="edit-only icon" id="undo" title="Undo (⌘Z)" disabled><svg class="i"><use href="#i-undo"/></svg></button>
+      <button class="edit-only icon" id="redo" title="Redo (⇧⌘Z)" disabled><svg class="i"><use href="#i-redo"/></svg></button>
+      <button class="edit-only publish" id="publish" title="Put the latest version online">Publish</button>
+      <button class="icon" id="btn-dates" title="Birthdays"><svg class="i"><use href="#i-cake"/></svg></button>
+      <button class="icon" id="btn-center" title="Back to the centre"><svg class="i"><use href="#i-center"/></svg></button>
+      <button class="icon" id="btn-more" title="More"><svg class="i"><use href="#i-more"/></svg></button>
+    </div>
+  </header>
+
+  <main id="stage">
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+      <style id="svg-style">
+        .link{fill:none;stroke:#c8c2b5;stroke-width:1.6;stroke-linejoin:round}
+        .couple{stroke:#b3ab9b;stroke-width:2.2;fill:none}
+        .couple.separated{stroke-dasharray:3 5;stroke:#cdc6b7}
+        .wed{font:600 10px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#a59e8f;text-anchor:middle}
+        .person{cursor:pointer}
+        .card{fill:#fff;stroke:#e2ddd2;stroke-width:1}
+        .person:hover .card{stroke:#c3bba9}
+        .person.center .card{stroke:#d6b25e;stroke-width:1.8}
+        .person.sel .card{stroke:#2f2a22;stroke-width:2}
+        .av{fill:#9a9488}
+        .side-a .av{fill:#4f7cac}
+        .side-b .av{fill:#c0607e}
+        .side-both .av{fill:#7d68b3}
+        .ini{font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#fff;text-anchor:middle}
+        .nm{font:600 13.5px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#26231e}
+        .nm.empty{fill:#aaa395;font-style:italic;font-weight:500}
+        .yr{font:500 12px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#8a8478}
+        .dead .card{fill:#ebe9e4;stroke:#d9d5cb}
+        .dead .av{fill:#b7b2a8}
+        .dead .nm{fill:#6c675e}
+        .dead .yr{fill:#9a958b}
+        .cross{font:600 13px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#a29c90;text-anchor:middle}
+        .chip{cursor:pointer}
+        .chip rect{fill:#fff;stroke:#cfc8b9}
+        .chip:hover rect{fill:#f2efe8}
+        .chip text{font:600 11px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#6c675e;text-anchor:middle}
+        .ctl{opacity:0;transition:opacity .15s;cursor:pointer}
+        .ctl.show,.ctl:hover{opacity:1}
+        .ctl circle{fill:#fff;stroke:#bdb5a5}
+        .ctl path{stroke:#6c675e;stroke-width:1.6}
+        .add{opacity:0;transition:opacity .12s;cursor:pointer}
+        .person:hover .add,.person.sel .add{opacity:1}
+        .add circle{fill:#2f2a22}
+        .add:hover circle{fill:#4f7cac}
+        .add path{stroke:#fff;stroke-width:2;stroke-linecap:round}
+        .flash .card{animation:ft-flash 1.4s ease-out}
+        @keyframes ft-flash{0%,40%{stroke:#d6b25e;stroke-width:5}100%{stroke-width:1}}
+      </style>
+      <g id="viewport">
+        <g id="links"></g>
+        <g id="nodes"></g>
+        <g id="ctls"></g>
+      </g>
+    </svg>
+    <div class="zoom">
+      <button class="icon" id="zoom-in" title="Zoom in"><svg class="i"><use href="#i-plus"/></svg></button>
+      <button class="icon" id="zoom-out" title="Zoom out"><svg class="i"><use href="#i-minus"/></svg></button>
+    </div>
+    <div class="back" id="back" hidden><button id="back-btn"></button></div>
+    <div class="message" id="message" hidden></div>
+  </main>
+
+  <aside id="panel" hidden></aside>
+  <div id="popover" class="popover" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="assets/model.js"></script>
+  <script src="assets/layout.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

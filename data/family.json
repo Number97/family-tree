@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "title": "Our Family Tree",
+  "root": "u0",
+  "people": {
+    "p0": {
+      "name": "Ernest Popovici",
+      "gender": "m"
+    },
+    "p1": {
+      "name": "Partner",
+      "gender": "f"
+    }
+  },
+  "unions": {
+    "u0": {
+      "partners": ["p0", "p1"],
+      "children": [],
+      "status": "partner"
+    }
+  }
+}
