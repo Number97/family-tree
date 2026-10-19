@@ -2,7 +2,10 @@
 (function () {
   const FT = (window.FT = window.FT || {});
 
-  const CARD_W = 204, CARD_H = 64, COUPLE_GAP = 46, SIB_GAP = 18, GROUP_GAP = 34, ROW_GAP = 104;
+  // Spacing tells the story: couples together stand close, couples who split up stand further
+  // apart, siblings are close, half-siblings a little less, and separate families clearly apart.
+  const CARD_W = 204, CARD_H = 64, ROW_GAP = 104;
+  const COUPLE_GAP = 30, EX_GAP = 84, SIB_GAP = 20, HALF_GAP = 34, GROUP_GAP = 72;
   const ROW_H = CARD_H + ROW_GAP;
 
   // focus: { union } or { person }.  view: { down: {unionId: true}, up: {personId: bool} }
@@ -56,11 +59,18 @@
         lineEdge.add(ps[0] + '|' + ps[1]); lineEdge.add(ps[1] + '|' + ps[0]);
       }
     }
+    const rootParentEdge = new Set();
+    for (const rp of rootPartners) {
+      const ps = tree.parents(rp).filter(vis);
+      if (ps.length === 2) { rootParentEdge.add(ps[0] + '|' + ps[1]); rootParentEdge.add(ps[1] + '|' + ps[0]); }
+    }
     function bestPath(comp) {
       if (comp.length === 1) return comp.slice();
       const score = (path) => {
         let sc = path.length * 10;
         for (let i = 1; i < path.length; i++) if (lineEdge.has(path[i - 1] + '|' + path[i])) sc += 100;
+        const n = path.length;
+        if (n > 1 && (rootParentEdge.has(path[0] + '|' + path[1]) || rootParentEdge.has(path[n - 2] + '|' + path[n - 1]))) sc += 50;
         return sc;
       };
       let best = null;
@@ -217,13 +227,27 @@
     // ---- 4. x positions ----
     const gens = Object.keys(rows).map(Number).sort((a, b) => a - b);
     const ux = {};
-    const unitW = (u) => u.members.length * CARD_W + (u.members.length - 1) * COUPLE_GAP;
+    const pairGap = (a, b) => {
+      const uid = tree.unionsOf(a).find((x) => tree.union(x).partners.includes(b));
+      if (!uid) return EX_GAP;
+      const st = tree.union(uid).status;
+      return st === 'separated' || st === 'divorced' ? EX_GAP : COUPLE_GAP;
+    };
+    for (const u of units) {
+      u.offs = [0];
+      for (let i = 1; i < u.members.length; i++) u.offs.push(u.offs[i - 1] + CARD_W + pairGap(u.members[i - 1], u.members[i]));
+    }
+    const offOf = (p) => { const u = unitOf[p]; return u.offs[u.members.indexOf(p)]; };
+    const unitW = (u) => u.offs[u.offs.length - 1] + CARD_W;
     const parentUnionsOf = (u) => [...new Set(u.members.map(visParentUnion).filter(Boolean))];
     const gapBetween = (a, b) => {
       const pa = parentUnionsOf(a), pb = parentUnionsOf(b);
-      return pa.some((x) => pb.includes(x)) ? SIB_GAP : GROUP_GAP;
+      if (pa.some((x) => pb.includes(x))) return SIB_GAP;
+      const parentsOf = (u) => u.members.flatMap((m) => tree.parents(m));
+      const qa = parentsOf(a), qb = parentsOf(b);
+      return qa.some((x) => qb.includes(x)) ? HALF_GAP : GROUP_GAP;
     };
-    const cx = (p) => { const u = unitOf[p]; return ux[u.id] + u.members.indexOf(p) * (CARD_W + COUPLE_GAP) + CARD_W / 2; };
+    const cx = (p) => ux[unitOf[p].id] + offOf(p) + CARD_W / 2;
     // Partners in one chain but not next to each other (someone with several partners):
     // their children hang from the gap beside the partner who isn't the shared one.
     const farPair = (uid) => {
@@ -238,8 +262,8 @@
       const far = farPair(uid);
       if (far) {
         return degree(far.b) <= degree(far.a)
-          ? cx(far.b) - CARD_W / 2 - COUPLE_GAP / 2
-          : cx(far.a) + CARD_W / 2 + COUPLE_GAP / 2;
+          ? cx(far.b) - CARD_W / 2 - (offOf(far.b) - offOf(far.m[far.m.indexOf(far.b) - 1]) - CARD_W) / 2
+          : cx(far.a) + CARD_W / 2 + (offOf(far.m[far.m.indexOf(far.a) + 1]) - offOf(far.a) - CARD_W) / 2;
       }
       const ps = tree.union(uid).partners.filter(vis);
       if (ps.length) return ps.reduce((s, p) => s + cx(p), 0) / ps.length;
@@ -288,7 +312,7 @@
         let lo = Infinity, hi = -Infinity;
         for (const c of kids) {
           const u = unitOf[c];
-          const cc = rel[u.id] + u.members.indexOf(c) * (CARD_W + COUPLE_GAP) + CARD_W / 2;
+          const cc = rel[u.id] + offOf(c) + CARD_W / 2;
           lo = Math.min(lo, cc); hi = Math.max(hi, cc);
         }
         const shift = unionCenter(uid) - (lo + hi) / 2;
@@ -358,7 +382,7 @@
       for (const k of ku) { rel[k.id] = x; x += unitW(k) + SIB_GAP; }
       for (const c of visChildren(best.pu)) {
         if (!(unitOf[c].id in rel)) continue;
-        const cc = rel[unitOf[c].id] + unitOf[c].members.indexOf(c) * (CARD_W + COUPLE_GAP) + CARD_W / 2;
+        const cc = rel[unitOf[c].id] + offOf(c) + CARD_W / 2;
         lo = Math.min(lo, cc); hi = Math.max(hi, cc);
       }
       return { x: rel[u.id] + unionCenter(best.pu) - (lo + hi) / 2, prio: 1 + best.score };
@@ -445,6 +469,7 @@
     const center = rootPartners.filter(vis).reduce((s, p) => s + cx(p), 0) / Math.max(1, rootPartners.filter(vis).length);
 
     const unions = [];
+    const bracketLane = {};
     for (const uid of visU) {
       const u = tree.union(uid);
       const ps = u.partners.filter(vis);
@@ -458,13 +483,19 @@
       const pair = ps.length === 2 ? ps.map((p) => nodes[p]).sort((a, b) => a.x - b.x) : null;
       let ox = unionCenter(uid), oy = y + CARD_H / 2;
       if (ps.length === 1 || (ps.length === 2 && !adjacent)) oy = y + CARD_H;
-      if (sameUnit && !adjacent) oy = y + CARD_H + 12;
       const far = farPair(uid);
+      let depth = 12;
+      if (far) {
+        const key = unitOf[far.a].id;
+        bracketLane[key] = (bracketLane[key] || 0) + 1;
+        depth = 4 + 9 * bracketLane[key];
+        oy = y + CARD_H + depth;
+      }
       if (ox == null) ox = span(uid);
       unions.push({
         id: uid, partners: ps, children: kids, x: ox, y: oy, rowY: y,
         couple: adjacent ? pair : null,
-        bracket: far ? pair : null,
+        bracket: far ? pair : null, depth,
         status: u.status || '', start: u.start || '', end: u.end || '',
         collapsed: !!down[uid] && hidden.length > 0,
         hiddenCount: hidden.length ? countHidden(tree, hidden, gen) : 0,

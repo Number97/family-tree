@@ -206,8 +206,8 @@
       } else if (u.bracket) {
         const [a, b] = u.bracket;
         const y = a.y + CARD_H;
-        links.push(`<path class="couple${ended}" d="M${a.x + CARD_W * 0.7},${y}V${y + 12}H${b.x + CARD_W * 0.3}V${y}"/>`);
-        ctls.push(knot(u.x, y + 12, u));
+        links.push(`<path class="couple${ended}" d="M${a.x + CARD_W * 0.7},${y}V${y + u.depth}H${b.x + CARD_W * 0.3}V${y}"/>`);
+        ctls.push(knot(u.x, y + u.depth, u));
       }
       const by = busY(u);
       if (u.children.length) {
