@@ -956,6 +956,49 @@
     "pqkur3j": {
       "name": "Fata 2",
       "gender": "f"
+    },
+    "pdvivs0": {
+      "name": "Gicu Teodorescu",
+      "gender": "m",
+      "deceased": true
+    },
+    "pd3ezff": {
+      "name": "Stelu Teodorescu",
+      "gender": "m",
+      "deceased": true
+    },
+    "pwgcsbi": {
+      "name": "Aurel Teodorescu",
+      "gender": "m"
+    },
+    "psr95lb": {
+      "name": "Lucian Teodorescu",
+      "gender": "m"
+    },
+    "p40z95n": {
+      "name": "Doru Teodorescu",
+      "gender": "m"
+    },
+    "p0p28xp": {
+      "name": "Carmen Teodorescu",
+      "gender": "f",
+      "notes": "California"
+    },
+    "p5bcuw2": {
+      "name": "Michelle",
+      "gender": "f"
+    },
+    "puhe9ex": {
+      "gender": "m",
+      "name": "Steven"
+    },
+    "pybkl7w": {
+      "name": "Tea Teodorescu",
+      "gender": "f"
+    },
+    "ps02ff0": {
+      "name": "Fata 2",
+      "gender": "f"
     }
   },
   "unions": {
@@ -1591,7 +1634,11 @@
         "ploi03p",
         "p7og3cg"
       ],
-      "children": []
+      "children": [
+        "pdvivs0",
+        "pd3ezff",
+        "pwgcsbi"
+      ]
     },
     "uvjcnqc": {
       "partners": [
@@ -1686,6 +1733,41 @@
       "children": [
         "p5skoew",
         "pqkur3j"
+      ]
+    },
+    "udjt91y": {
+      "partners": [
+        "pd3ezff"
+      ],
+      "children": [
+        "psr95lb"
+      ]
+    },
+    "up61kmp": {
+      "partners": [
+        "pdvivs0"
+      ],
+      "children": [
+        "p40z95n",
+        "p0p28xp"
+      ]
+    },
+    "umxkcpc": {
+      "partners": [
+        "p0p28xp"
+      ],
+      "children": [
+        "p5bcuw2",
+        "puhe9ex"
+      ]
+    },
+    "uh8pk2e": {
+      "partners": [
+        "p40z95n"
+      ],
+      "children": [
+        "pybkl7w",
+        "ps02ff0"
       ]
     }
   }
