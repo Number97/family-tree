@@ -73,6 +73,9 @@
     if (rootUnion) visitUnion(rootUnion, 0, false);
     while (q.length) {
       const p = q.shift();
+      // Someone shown only as a partner beyond the focus distance doesn't bring in their own
+      // relatives (otherwise chains of exes' exes would spread across the screen).
+      if (!near(p) && !rootPartners.includes(p) && reach[p] === 'spouse' && R !== Infinity) continue;
       for (const uid of tree.unionsOf(p)) if (!unionHidden(p, uid)) visitUnion(uid, gen[p], false);
       const pu = tree.parentUnion(p);
       if (pu && !visU.has(pu) && hideOf(p) && hideOf(p).up) { upHide[p] = true; continue; }
@@ -189,6 +192,11 @@
       return unit;
     };
     const sibsOf = (uid, p) => visChildren(uid).filter((c) => c !== p);
+    // Keep siblings next to each other: those who come with partners go to the outer end of the
+    // group (partners on the outside), single siblings stay in the middle by the anchor person.
+    const withPartner = (c) => unitOf[c].members.length > 1;
+    const outerFirst = (list) => list.filter(withPartner).concat(list.filter((c) => !withPartner(c)));
+    const outerLast = (list) => list.filter((c) => !withPartner(c)).concat(list.filter(withPartner));
 
     const up = (uid, dir) => {
       const ps = tree.union(uid).partners.filter(vis);
@@ -211,7 +219,12 @@
         for (const uid of tree.unionsOf(m)) {
           if (!visU.has(uid) || doneU.has(uid)) continue;
           doneU.add(uid);
-          for (const c of visChildren(uid)) if (!unitOf[c].emitted) subtree(c, dir);
+          const kids = visChildren(uid).filter((c) => !unitOf[c].emitted);
+          const paired = kids.filter(withPartner), single = kids.filter((c) => !withPartner(c));
+          const half = Math.ceil(paired.length / 2);
+          paired.slice(0, half).forEach((c) => subtree(c, 'L'));
+          single.forEach((c) => subtree(c, dir));
+          paired.slice(half).forEach((c) => subtree(c, 'R'));
         }
       }
     };
@@ -222,11 +235,11 @@
       if (fresh) doneU.add(pu);
       let unit;
       if (dir === 'L') {
-        if (fresh) { up(pu, 'L'); sibsOf(pu, p).forEach((s) => subtree(s, 'L')); }
+        if (fresh) { up(pu, 'L'); outerFirst(sibsOf(pu, p)).forEach((s) => subtree(s, 'L')); }
         unit = emitUnit(p, 'left', pair);
       } else {
         unit = emitUnit(p, 'right', pair);
-        if (fresh) { sibsOf(pu, p).forEach((s) => subtree(s, 'R')); up(pu, 'R'); }
+        if (fresh) { outerLast(sibsOf(pu, p)).forEach((s) => subtree(s, 'R')); up(pu, 'R'); }
       }
       descend(unit, dir);
     }
@@ -242,9 +255,26 @@
     if (first) {
       phase = 'L';
       const pu0 = visParentUnion(first);
-      if (pu0) { doneU.add(pu0); up(pu0, 'L'); sibsOf(pu0, first).forEach((s) => subtree(s, 'L')); }
+      // The person in focus sits in the middle of their siblings (older on the left, younger on
+      // the right), right under their parents. (For the centre couple each family keeps its side.)
+      const solo = !rootUnion;
+      const sibs0 = pu0 ? sibsOf(pu0, first) : [];
+      const born = (c) => { const b = tree.person(c).birth; return b ? parseInt(String(b).replace('~', ''), 10) : null; };
+      const fb = born(first);
+      // Siblings only go on a side with at most one partner between them and the person in focus.
+      const path0 = unitOf[first].path, i0 = path0.indexOf(first);
+      const flip0 = i0 > path0.length - 1 - i0;
+      const leftOf = (flip0 ? path0.length - 1 - i0 : i0) + unitOf[first].extra.length * 0;
+      const rightOf = path0.length - 1 - leftOf + unitOf[first].extra.length;
+      const okLeft = leftOf <= 1, okRight = rightOf <= 1;
+      const split = solo && okLeft && okRight;
+      const allRight = solo && !okLeft && okRight;
+      const leftSibs = allRight ? [] : !split ? sibs0 : sibs0.filter((c, i) => (fb && born(c) ? born(c) <= fb : i < sibs0.length / 2));
+      const rightSibs = sibs0.filter((c) => !leftSibs.includes(c));
+      if (pu0) { doneU.add(pu0); up(pu0, 'L'); outerFirst(leftSibs).forEach((s) => subtree(s, 'L')); }
       phase = 'C';
       const rootUnit = emitUnit(first, 'left', rootPartners.length === 2 ? rootPartners : null);
+      outerLast(rightSibs).forEach((s) => subtree(s, 'R'));
       descend(rootUnit, 'R');
       phase = 'R';
       for (const p of rest) side(p, 'R', rootPartners);
@@ -411,7 +441,11 @@
         if (!best || score > best.score) best = { uid, score };
       }
       if (!best) return { x: ux[u.id], prio: 0 };
-      return { x: ux[u.id] + span(best.uid) - unionCenter(best.uid), prio: 1 + Math.floor(best.score / 100) };
+      // Parents of someone on the family line sit right above that person (their siblings hang
+      // off to the side); other families sit centred above all their children.
+      const line = visChildren(best.uid).find((c) => reach[c] === 'root' || reach[c] === 'ancestor');
+      const under = line ? cx(line) : span(best.uid);
+      return { x: ux[u.id] + under - unionCenter(best.uid), prio: 1 + Math.floor(best.score / 100) };
     };
     // Where a unit should be for its parents: its sibling group packed and centred under them.
     const downTarget = (u) => {
@@ -423,6 +457,7 @@
         if (!best || score > best.score) best = { pu, score };
       }
       if (!best) return { x: ux[u.id], prio: 0 };
+      if (tree.union(best.pu).partners.some((x) => rootPartners.includes(x))) best.score += 5;
       const ku = [...new Set(visChildren(best.pu).map((c) => unitOf[c]))].filter((k) => k.gen === u.gen).sort((a, b) => ux[a.id] - ux[b.id]);
       let x = 0, lo = Infinity, hi = -Infinity;
       const rel = {};
@@ -434,15 +469,18 @@
       }
       return { x: rel[u.id] + unionCenter(best.pu) - (lo + hi) / 2, prio: 1 + best.score };
     };
+    // Couples above the family line compete for the space right above their child (two couples
+    // can't both sit exactly above two people standing side by side). Share the difference evenly.
     function shareBend(r, t, g) {
-      const holds = (u) => u.members.some((m) => rootPartners.some((rp) => tree.parents(rp).includes(m)));
-      const idx = r.map((u, i) => (holds(u) ? i : -1)).filter((i) => i >= 0);
+      const idx = r.map((u, i) => (t[i].prio >= 3 ? i : -1)).filter((i) => i >= 0);
       if (idx.length < 2) return;
-      const a = idx[0], b = idx[idx.length - 1];
-      let need = 0;
-      for (let i = a; i < b; i++) need += unitW(r[i]) + (rowGaps[g][i] || 0);
-      const short = need - (t[b].x - t[a].x);
-      if (short > 0) { t[a].x -= short / 2; t[b].x += short / 2; }
+      const need = idx.slice(0, -1).map((a, k) => {
+        let d = 0;
+        for (let i = a; i < idx[k + 1]; i++) d += unitW(r[i]) + (rowGaps[g][i] || 0);
+        return d;
+      });
+      const xs = pav(idx.map((i) => t[i].x), need.concat([0]), []);
+      idx.forEach((i, k) => { t[i].x = xs[k]; });
     }
     function straighten() {
       const up = gens.filter((g) => g < 0).sort((a, b) => b - a);
@@ -450,7 +488,7 @@
       for (let round = 0; round < 3; round++) {
         for (const g of up) {
           const t = rows[g].map(upTarget);
-          if (g === -1) shareBend(rows[g], t, g);
+          shareBend(rows[g], t, g);
           placeRow(g, t.map((o) => o.x), t.map((o) => o.prio));
         }
         for (const g of downRows) {
