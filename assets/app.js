@@ -11,7 +11,7 @@
     tree: null,
     editable: false,
     focus: null,
-    view: { down: {}, up: {}, hide: {} },
+    view: { down: {}, up: {}, hide: {}, reveal: {}, revealUp: {} },
     selected: null,
     L: null,
     cam: { x: 0, y: 0, k: 1 },
@@ -25,6 +25,7 @@
     settings: null,
     D: null,
     rot: 0,
+    rev: 0,
   };
 
   // ---------- helpers ----------
@@ -117,7 +118,7 @@
   function loadView() {
     try {
       const v = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
-      if (v && typeof v === 'object') state.view = { down: v.down || {}, up: v.up || {}, hide: v.hide || {} };
+      if (v && typeof v === 'object') state.view = { down: v.down || {}, up: v.up || {}, hide: v.hide || {}, reveal: v.reveal || {}, revealUp: v.revealUp || {} };
     } catch (e) { /* storage unavailable */ }
   }
 
@@ -165,6 +166,10 @@
   }
   function fitAll() {
     const b = state.D.bounds, s = stageSize();
+    if (state.settings.focus && !state.settings.circle) {
+      const k = Math.max(0.6, Math.min(1, s.w / (b.maxX - b.minX + 80), s.h / (b.maxY - b.minY + 80)));
+      return centerOnPoint(state.D.center.x, state.D.center.y, k);
+    }
     const w = b.maxX - b.minX + 80, h = b.maxY - b.minY + 80;
     const k = Math.min(1, s.w / w, s.h / h);
     if (k < 0.62 && !state.settings.circle) centerOnPoint(state.D.center.x, state.D.center.y, 0.8);
@@ -193,6 +198,9 @@
       if (t < 1) camAnim = requestAnimationFrame(step);
     };
     camAnim = requestAnimationFrame(step);
+    // Make sure it ends in the right place even if frames are paused (e.g. a background tab).
+    clearTimeout(animateCam.t);
+    animateCam.t = setTimeout(() => { cancelAnimationFrame(camAnim); Object.assign(state.cam, target); applyCam(); }, ms + 80);
   }
 
   // ---------- rendering ----------
@@ -217,13 +225,47 @@
       state.focus = first ? { person: first } : state.focus;
     }
     state.L = layout(state.tree, state.focus, state.view, layoutOpts());
+    restoreCounts(state.L);
     draw(opts.animate ? prevBoxes : null);
     const now = anchorId && box(anchorId);
-    if (before && now) {
+    const mid = opts.center && box(opts.center);
+    if (mid) {
+      const target = camFor(mid.x + mid.w / 2, mid.y + mid.h / 2, state.cam.k);
+      if (opts.animate) animateCam(target, ANIM_MS); else Object.assign(state.cam, target), applyCam();
+    } else if (before && now) {
       const target = { x: before.x - now.x * state.cam.k, y: before.y - now.y * state.cam.k, k: state.cam.k };
       if (opts.animate) animateCam(target, ANIM_MS); else Object.assign(state.cam, target), applyCam();
     }
     updateChrome();
+  }
+
+  // A "bring back" bubble shows how many people would reappear on screen (not in the whole tree).
+  function withoutHide(view, id, part) {
+    const v = Object.assign({}, view, { hide: Object.assign({}, view.hide) });
+    let h = v.hide[id];
+    if (!h) return v;
+    if (h === true) { h = { up: true, u: {} }; for (const uid of state.tree.unionsOf(id)) h.u[uid] = true; }
+    h = { up: h.up, u: Object.assign({}, h.u) };
+    if (part === 'up') delete h.up; else delete h.u[part];
+    v.hide[id] = h;
+    return v;
+  }
+  const countCache = new Map();
+  function restoreCounts(L) {
+    const parts = L.upChips.filter((c) => c.byHide).map((c) => [c, c.person, 'up'])
+      .concat((L.hideChips || []).map((c) => [c, c.person, c.union]));
+    if (!parts.length) return;
+    const base = Object.keys(L.nodes).length;
+    const ctx = JSON.stringify([state.rev, state.focus, state.view, layoutOpts()]);
+    for (const [chip, id, part] of parts) {
+      const key = ctx + '|' + id + '|' + part;
+      if (!countCache.has(key)) {
+        if (countCache.size > 300) countCache.clear();
+        const n = Object.keys(layout(state.tree, state.focus, withoutHide(state.view, id, part), layoutOpts()).nodes).length - base;
+        countCache.set(key, Math.max(0, n));
+      }
+      chip.count = countCache.get(key);
+    }
   }
 
   // Where things go on screen: straight rows, or the circle (rows become rings, scroll rotates).
@@ -319,19 +361,28 @@
       }
       if (u.collapsed && u.partners.length) {
         links.push(`<path class="link" ${ua} d="${pathOf([[[u.x, u.y], [u.x, by - 11]]], pj)}"/>`);
-        const act = u.byFocus ? `data-act="focus-u" data-u="${u.id}"` : `data-act="unfold" data-u="${u.id}"`;
-        ctls.push(chip(...at(u.x, by), '+' + u.hiddenCount, act + ` ${ua}`, u.byFocus ? `Move the focus here to see ${u.hiddenCount} more` : `Show ${u.hiddenCount} hidden`));
+        const act = u.byFocus ? `data-act="reveal-u" data-u="${u.id}"` : `data-act="unfold" data-u="${u.id}"`;
+        ctls.push(chip(...at(u.x, by), '+' + u.hiddenCount, act + ` ${ua}`, u.byFocus ? `Show their children (${u.hiddenCount})` : `Show ${u.hiddenCount} hidden`));
       }
     }
     for (const c of L.upChips) {
       const n = L.nodes[c.person], x = n.x + n.w / 2;
       links.push(`<path class="link" d="${pathOf([[[x, n.y], [x, n.y - 18]]], pj)}"/>`);
-      const act = c.byFocus ? `data-act="focus-p" data-p="${c.person}"` : `data-act="show-up" data-p="${c.person}"`;
-      ctls.push(chip(...at(x, n.y - 29), '▲ ' + c.count, act, c.byFocus ? 'Move the focus here to see their parents' : `Show parents (${c.count})`));
+      const act = c.byHide ? `data-act="unhide-up" data-p="${c.person}"`
+        : c.byFocus ? `data-act="reveal-up" data-p="${c.person}"` : `data-act="show-up" data-p="${c.person}"`;
+      const title = c.byHide ? `Show ${t.firstName(c.person)}\u2019s parents\u2019 side again`
+        : c.byFocus ? `Show ${t.firstName(c.person)}\u2019s parents (${c.count})` : `Show parents (${c.count})`;
+      ctls.push(chip(...at(x, n.y - 29), c.count ? '▲ ' + c.count : '▲', act, title));
     }
-    for (const c of L.hideChips || []) {
-      const n = L.nodes[c.person];
-      ctls.push(chip(...at(n.x + n.w / 2, n.y + n.h + 13), '+' + c.count, `data-act="unhide" data-p="${c.person}"`, `Show ${c.count} hidden`));
+    const perPerson = {};
+    for (const c of L.hideChips || []) (perPerson[c.person] = perPerson[c.person] || []).push(c);
+    for (const [pid, list] of Object.entries(perPerson)) {
+      const n = L.nodes[pid];
+      list.forEach((c, i) => {
+        const x = n.x + n.w / 2 + (i - (list.length - 1) / 2) * 46;
+        const who = c.with ? `family with ${t.firstName(c.with)}` : 'children';
+        ctls.push(chip(...at(x, n.y + n.h + 13), c.count ? '+' + c.count : '+', `data-act="unhide-u" data-p="${pid}" data-u="${c.union}"`, `Show ${who} again`));
+      });
     }
 
     const selected = state.selected;
@@ -364,8 +415,8 @@
         ? `<path transform="translate(1,1)" d="M2 11.5V14h2.5l7.4-7.4-2.5-2.5L2 11.5zM13.7 4.8a.7.7 0 0 0 0-1L12.2 2.3a.7.7 0 0 0-1 0L10 3.5 12.5 6l1.2-1.2z"/>`
         : `<circle cx="9" cy="9" r="7" class="ring"/><path d="M9 8v5M9 5.2v.1" class="ib"/>`;
       s += '</g>';
-      if (S.smartHide && !L.rootPartners.includes(id)) {
-        s += `<g class="hb" data-act="hide-branch" data-p="${id}" transform="translate(0,${CARD_H / 2})"><title>Hide everyone connected only through ${esc(t.firstName(id))}</title><circle r="11"/><path d="M-4.5 0H4.5"/></g>`;
+      if (S.smartHide) {
+        s += `<g class="hb" data-act="hide-branch" data-p="${id}" transform="translate(0,${CARD_H / 2})"><title>Hide part of ${esc(t.firstName(id))}\u2019s family</title><circle r="11"/><path d="M-4.5 0H4.5"/></g>`;
       }
       if (state.editable) {
         s += `<g class="add" data-act="add" data-p="${id}" transform="translate(${CARD_W},${CARD_H / 2})"><title>Add a relative</title><circle r="11"/><path d="M-4.5 0H4.5M0 -4.5V4.5"/></g>`;
@@ -389,7 +440,7 @@
       minY = Math.min(minY, b.y); maxY = Math.max(maxY, b.y + b.h);
     }
     D.bounds = { minX, maxX, minY: minY - 40, maxY: maxY + 40 };
-    const rb = L.rootPartners.map(box2(D)).filter(Boolean);
+    const rb = (state.focus.person ? [state.focus.person] : L.rootPartners).map(box2(D)).filter(Boolean);
     D.center = rb.length ? { x: rb.reduce((s, b) => s + b.x + b.w / 2, 0) / rb.length, y: rb[0].y + rb[0].h / 2 } : { x: 0, y: 0 };
     state.D = D;
     lodState.clear();
@@ -451,17 +502,74 @@
     svg.classList.remove('dim');
     for (const el of svg.querySelectorAll('.hl')) el.classList.remove('hl');
   }
-  // How many people would disappear if this person's branch were hidden.
-  function branchSize(id) {
+  // How many people on screen would disappear if some of this person's links were cut:
+  // `up` = their parents' side, `unions` = relationships (partner and children together).
+  function hiddenCount(id, up, unions) {
     const t = state.tree, vis = state.L.nodes;
-    const starts = state.L.rootPartners.filter((r) => r !== id && vis[r]);
+    const starts = state.L.rootPartners.filter((r) => vis[r]);
+    if (!starts.length) return 0;
     const seen = new Set(starts), stack = starts.slice();
     while (stack.length) {
       const p = stack.pop();
-      const next = t.parents(p).concat(t.siblingsOf(p), t.partnersOf(p).map((o) => o.id), t.childrenOf(p));
-      for (const n of next) if (n !== id && vis[n] && !seen.has(n)) { seen.add(n); stack.push(n); }
+      let next;
+      if (p === id) {
+        next = [];
+        if (!up) next.push(...t.parents(p), ...t.siblingsOf(p));
+        for (const uid of t.unionsOf(p)) {
+          if (unions.has(uid)) continue;
+          const u = t.union(uid);
+          next.push(...u.partners, ...u.children);
+        }
+      } else {
+        next = t.parents(p).concat(t.siblingsOf(p), t.partnersOf(p).map((o) => o.id), t.childrenOf(p));
+      }
+      for (const n of next) if (vis[n] && !seen.has(n)) { seen.add(n); stack.push(n); }
     }
-    return Object.keys(vis).filter((p) => p !== id && !seen.has(p)).length;
+    return Object.keys(vis).filter((p) => !seen.has(p)).length;
+  }
+  function hideMenu(id, rect) {
+    const t = state.tree, none = new Set();
+    const rootU = state.focus.union;
+    const unions = t.unionsOf(id).filter((u) => u !== rootU && state.L.unions.some((x) => x.id === u));
+    const name = esc(t.firstName(id));
+    const items = [];
+    const n = hiddenCount(id, true, none);
+    if (n) items.push(`<button class="item" data-hide="up" data-p="${id}"><span>${name}\u2019s parents\u2019 side</span><span class="muted">${n}</span></button>`);
+    for (const uid of unions) {
+      const c = hiddenCount(id, false, new Set([uid]));
+      if (!c) continue;
+      const other = t.union(uid).partners.find((x) => x !== id);
+      const label = other ? `Family with ${esc(t.firstName(other))}` : 'Children (other parent unknown)';
+      items.push(`<button class="item" data-hide="u:${uid}" data-p="${id}"><span>${label}</span><span class="muted">${c}</span></button>`);
+    }
+    const all = hiddenCount(id, true, new Set(unions));
+    if (items.length > 1 && all) items.push(`<div class="sep"></div><button class="item" data-hide="all" data-p="${id}"><span>All of the above</span><span class="muted">${all}</span></button>`);
+    const h = `<div class="hd">Hide for ${name}</div>` + (items.length ? items.join('')
+      : `<div class="empty">Nothing to hide: everyone around ${name} is also connected another way.</div>`);
+    openPopover(h, rect, 'wide');
+  }
+  function applyHide(id, what) {
+    const cur = state.view.hide[id];
+    const h = cur && cur !== true ? cur : { u: {} };
+    h.u = h.u || {};
+    if (what === 'up' || what === 'all') h.up = true;
+    if (what.startsWith('u:')) h.u[what.slice(2)] = true;
+    if (what === 'all') {
+      for (const uid of state.tree.unionsOf(id)) if (uid !== state.focus.union) h.u[uid] = true;
+    }
+    state.view.hide[id] = h;
+    saveView();
+    closePopover();
+    render(id, { animate: true });
+  }
+  function unhide(id, part) {
+    let h = state.view.hide[id];
+    if (!h) return;
+    if (h === true) { h = { up: true, u: {} }; for (const uid of state.tree.unionsOf(id)) h.u[uid] = true; }
+    if (part === 'up') delete h.up; else if (h.u) delete h.u[part];
+    if (!h.up && !Object.keys(h.u || {}).length) delete state.view.hide[id]; else state.view.hide[id] = h;
+    saveView();
+    render(id, { animate: true });
   }
   function showTip(id, ev) {
     const tip = $('#tip'), p = P(id);
@@ -477,8 +585,11 @@
   function setFocus(id) {
     if (!P(id)) return;
     state.focus = { person: id };
+    state.view.reveal = {};
+    state.view.revealUp = {};
+    saveView();
     closePopover();
-    render(id, { animate: true });
+    render(null, { animate: true, center: id });
   }
 
   function ctl(x, y, kind, attrs, title) {
@@ -703,6 +814,7 @@
     state.lastTime = now;
     fn(state.tree);
     state.tree.reindex();
+    state.rev++;
     render(opts.anchor || state.selected);
     if (opts.panel !== false) renderPanel();
     else refreshPanelHead();
@@ -724,6 +836,7 @@
 
   function restore(json) {
     closePopover();
+    state.rev++;
     state.tree = new Tree(JSON.parse(json));
     state.lastKey = null;
     if (state.selected && !P(state.selected)) state.selected = null;
@@ -1177,7 +1290,6 @@
       if (!g) { clearHighlight(); $('#tip').hidden = true; return; }
       document.querySelectorAll(`.ctl[data-for~="${id}"]`).forEach((c) => c.classList.add('show'));
       if (state.settings.hover && !drag) highlight(id);
-      if (state.settings.smartHide) g.classList.toggle('can-hide', branchSize(id) > 0);
       if (g.classList.contains('lod-mid') || g.classList.contains('lod-dot')) showTip(id, e);
     });
     svg.addEventListener('pointerleave', () => { hovered = null; clearHighlight(); $('#tip').hidden = true; });
@@ -1194,10 +1306,16 @@
         if (a === 'show-up') { state.view.up[act.dataset.p] = false; saveView(); render(act.dataset.p, { animate: true }); return; }
         if (a === 'hide-up') { state.view.up[act.dataset.p] = true; saveView(); render(act.dataset.p, { animate: true }); return; }
         if (a === 'open') { select(act.dataset.p); return; }
-        if (a === 'hide-branch') { state.view.hide[act.dataset.p] = true; saveView(); render(act.dataset.p, { animate: true }); return; }
-        if (a === 'unhide') { delete state.view.hide[act.dataset.p]; saveView(); render(act.dataset.p, { animate: true }); return; }
-        if (a === 'focus-p') { setFocus(act.dataset.p); return; }
-        if (a === 'focus-u') { const u = state.tree.union(act.dataset.u); if (u) setFocus(u.partners.find((x) => state.L.nodes[x]) || u.partners[0]); return; }
+        if (a === 'hide-branch') { hideMenu(act.dataset.p, act.getBoundingClientRect()); return; }
+        if (a === 'unhide-up') { unhide(act.dataset.p, 'up'); return; }
+        if (a === 'unhide-u') { unhide(act.dataset.p, act.dataset.u); return; }
+        if (a === 'reveal-u') {
+          state.view.reveal[act.dataset.u] = true; saveView();
+          const u = state.tree.union(act.dataset.u);
+          render(u && (u.partners.find((x) => state.L.nodes[x]) || u.partners[0]), { animate: true });
+          return;
+        }
+        if (a === 'reveal-up') { state.view.revealUp[act.dataset.p] = true; saveView(); render(act.dataset.p, { animate: true }); return; }
       }
       const g = e.target.closest('.person');
       if (g) {
@@ -1320,6 +1438,8 @@
       settingsMenu($('#btn-settings').getBoundingClientRect());
     });
     $('#popover').addEventListener('click', (e) => {
+      const hb = e.target.closest('[data-hide]');
+      if (hb) { applyHide(hb.dataset.p, hb.dataset.hide); return; }
       const rb = e.target.closest('[data-radius]');
       if (rb) {
         state.settings.radius = +rb.dataset.radius;
@@ -1347,7 +1467,7 @@
         const up = {}, down = {};
         for (const id of Object.keys(state.tree.data.people)) up[id] = false;
         for (const id of Object.keys(state.tree.data.unions)) down[id] = false;
-        state.view = { down, up, hide: {} };
+        state.view = { down, up, hide: {}, reveal: {}, revealUp: {} };
         saveView();
         render(null, { animate: true });
         fitAll();
@@ -1362,11 +1482,14 @@
     $('#btn-more').addEventListener('click', (e) => moreMenu(e.currentTarget.getBoundingClientRect()));
     $('#btn-center').addEventListener('click', () => { const c = state.D.center; animateCam(camFor(c.x, c.y, state.cam.k), 400); });
     $('#back-btn').addEventListener('click', () => {
-      const keep = state.L.rootPartners.find((r) => state.tree.rootPartners().includes(r)) || state.tree.rootPartners()[0];
       state.focus = { union: state.tree.data.root };
-      render(keep, { animate: true });
+      state.view.reveal = {};
+      state.view.revealUp = {};
+      saveView();
+      render(null, { animate: true });
       renderPanel();
-      setTimeout(() => { const c = state.D.center; animateCam(camFor(c.x, c.y, state.cam.k), 400); }, ANIM_MS);
+      const c = state.D.center;
+      animateCam(camFor(c.x, c.y, state.cam.k), ANIM_MS);
     });
     $('#btn-settings').addEventListener('click', (e) => settingsMenu(e.currentTarget.getBoundingClientRect()));
     $('#zoom-in').addEventListener('click', () => { const s = stageSize(); zoomAt(s.w / 2, s.top + s.h / 2, 1.25); });
@@ -1396,7 +1519,7 @@
 
     document.addEventListener('pointerdown', (e) => {
       const pop = $('#popover');
-      if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('[data-act="add"], [data-act="couple"], #btn-dates, #btn-more, #btn-settings, [data-add]')) closePopover();
+      if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('[data-act="add"], [data-act="couple"], [data-act="hide-branch"], #btn-dates, #btn-more, #btn-settings, [data-add]')) closePopover();
     });
     document.addEventListener('keydown', (e) => {
       const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);

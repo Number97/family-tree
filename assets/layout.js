@@ -9,11 +9,14 @@
   const ROW_H = CARD_H + ROW_GAP;
 
   // focus: { union } or { person }.
-  // view: { down: {unionId: bool}, up: {personId: bool}, hide: {personId: true} }
+  // view: { down: {unionId: bool}, up: {personId: bool},
+  //         hide: {personId: { up: true, u: {unionId: true} }} }  (parts of a branch hidden with "−")
   // opts: { radius: number|null (focus mode), sizes: bool (smaller further away), improved: bool (fewer crossings) }
   function layout(tree, focus, view, opts) {
     opts = opts || {};
     const down = view.down || {}, upState = view.up || {}, hide = view.hide || {};
+    // In focus mode, single parts unfolded beyond the focus distance: a family's children, or someone's parents.
+    const reveal = view.reveal || {}, revealUp = view.revealUp || {};
     const rootUnion = focus.union && tree.union(focus.union) ? focus.union : null;
     const rootPartners = rootUnion ? tree.union(rootUnion).partners.slice() : [focus.person];
 
@@ -47,20 +50,29 @@
       for (const p of u.partners) addP(p, g, fromChild ? 'ancestor' : 'spouse');
       if (folded[uid]) return;
       for (const c of u.children) {
-        if (near(c)) addP(c, g + 1, 'child'); else if (!(c in gen)) cut[uid] = true;
+        if (near(c) || reveal[uid]) addP(c, g + 1, 'child'); else if (!(c in gen)) cut[uid] = true;
       }
     };
-    const upCut = {};
+    const upCut = {}, upHide = {};
+    // Hidden parts of a branch: the person stays, but nothing is reached through that part.
+    const hideOf = (p) => {
+      const h = hide[p];
+      if (!h) return null;
+      return h === true ? { up: true, all: true } : h;
+    };
+    const unionHidden = (p, uid) => {
+      const h = hideOf(p);
+      return !!h && uid !== rootUnion && (h.all || !!(h.u && h.u[uid]));
+    };
     rootPartners.forEach((p) => addP(p, 0, 'root'));
     if (rootUnion) visitUnion(rootUnion, 0, false);
     while (q.length) {
       const p = q.shift();
-      // A hidden branch: this person stays, but nothing is reached through them.
-      if (hide[p] && !rootPartners.includes(p)) continue;
-      for (const uid of tree.unionsOf(p)) visitUnion(uid, gen[p], false);
+      for (const uid of tree.unionsOf(p)) if (!unionHidden(p, uid)) visitUnion(uid, gen[p], false);
       const pu = tree.parentUnion(p);
+      if (pu && !visU.has(pu) && hideOf(p) && hideOf(p).up) { upHide[p] = true; continue; }
       if (pu && !visU.has(pu) && !upHidden(p)) {
-        if (tree.union(pu).partners.some(near) || !tree.union(pu).partners.length) visitUnion(pu, gen[p] - 1, true);
+        if (tree.union(pu).partners.some(near) || !tree.union(pu).partners.length || revealUp[p]) visitUnion(pu, gen[p] - 1, true);
         else upCut[p] = true;
       }
     }
@@ -600,7 +612,7 @@
         status: u.status || '', start: u.start || '', end: u.end || '',
         collapsed: (!!isFolded(uid) || !!cut[uid]) && hidden.length > 0,
         byFocus: !!cut[uid] && !isFolded(uid),
-        hiddenCount: hidden.length ? countHidden(tree, hidden, gen) : 0,
+        hiddenCount: !hidden.length ? 0 : cut[uid] && !isFolded(uid) ? withPartners(tree, hidden, gen) : countHidden(tree, hidden, gen),
       });
     }
     // Families in the same row whose connector lines would overlap get different heights.
@@ -633,16 +645,21 @@
       if (pu2 && !visU.has(pu2)) {
         const u = tree.union(pu2);
         const seeds = u.partners.concat(u.children).filter((x) => !vis(x));
-        upChips.push({ person: p, count: countHidden(tree, seeds, gen), byFocus: !!upCut[p] });
+        const byFocus = !upHide[p] && !!upCut[p];
+        upChips.push({ person: p, count: byFocus ? withPartners(tree, u.partners.filter((x) => !vis(x)), gen) : countHidden(tree, seeds, gen), byFocus, byHide: !!upHide[p] });
       }
     }
     // People whose branch was hidden with the "−" button.
+    // One bubble per hidden relationship (partner and their children together).
     const hideChips = [];
     for (const p of order) {
-      if (!hide[p] || rootPartners.includes(p)) continue;
-      const seeds = tree.parents(p).concat(tree.siblingsOf(p), tree.partnersOf(p).map((o) => o.id), tree.childrenOf(p));
-      const count = countHidden(tree, seeds, gen);
-      if (count) hideChips.push({ person: p, count });
+      if (!hideOf(p)) continue;
+      for (const uid of tree.unionsOf(p)) {
+        if (!unionHidden(p, uid) || visU.has(uid)) continue;
+        const u = tree.union(uid);
+        const count = countHidden(tree, u.partners.concat(u.children).filter((x) => x !== p), gen);
+        if (count) hideChips.push({ person: p, union: uid, count, with: u.partners.find((x) => x !== p) || null });
+      }
     }
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -674,6 +691,16 @@
       for (const n of tree.parents(p).concat(tree.siblingsOf(p), tree.childrenOf(p))) step(n, 1);
     }
     return d;
+  }
+
+  // The people themselves plus their partners, if not already visible.
+  function withPartners(tree, people, visible) {
+    const out = new Set();
+    for (const p of people) {
+      if (!(p in visible)) out.add(p);
+      for (const { id } of tree.partnersOf(p)) if (!(id in visible)) out.add(id);
+    }
+    return out.size;
   }
 
   // Number of people reachable from `seeds` without passing through visible people.
