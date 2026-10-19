@@ -12,6 +12,33 @@
       "name": "Elisa Jia Xin Zhang",
       "gender": "f",
       "birth": "2001-10-25"
+    },
+    "pw653yc": {
+      "name": "Ernest Virgil Popovici",
+      "gender": "m",
+      "birth": "1955-04-01"
+    },
+    "pkdtqzj": {
+      "name": "Virgil Popovici",
+      "gender": "m",
+      "deceased": true,
+      "death": "2006"
+    },
+    "peuesve": {
+      "name": "Eliza Popovici",
+      "gender": "f",
+      "deceased": true
+    },
+    "p5m8pym": {
+      "name": "Nana Popovici",
+      "gender": "f",
+      "deceased": true
+    },
+    "pjllmxz": {
+      "name": "Corina Daniela Popovici",
+      "birthName": "Voineasa",
+      "gender": "f",
+      "birth": "1968-02-29"
     }
   },
   "unions": {
@@ -23,6 +50,35 @@
       "children": [],
       "status": "partner",
       "start": "2024"
+    },
+    "u8g72d7": {
+      "partners": [
+        "pw653yc",
+        "pjllmxz"
+      ],
+      "children": [
+        "p0"
+      ],
+      "status": "married",
+      "start": "2003"
+    },
+    "u7dpssu": {
+      "partners": [
+        "pkdtqzj",
+        "peuesve"
+      ],
+      "children": [
+        "pw653yc"
+      ],
+      "status": "married"
+    },
+    "u9lctwi": {
+      "partners": [
+        "pkdtqzj",
+        "p5m8pym"
+      ],
+      "children": [],
+      "status": "married"
     }
   }
 }
