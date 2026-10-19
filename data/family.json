@@ -157,6 +157,16 @@
     "ptzcz2b": {
       "name": "Yu Han Cousin",
       "gender": "m"
+    },
+    "psyqsqe": {
+      "name": "Alex Zhang",
+      "gender": "m",
+      "birth": "1999"
+    },
+    "plxzfw1": {
+      "name": "Hélène Zhang",
+      "gender": "f",
+      "birth": "1998"
     }
   },
   "unions": {
@@ -275,20 +285,16 @@
       ],
       "status": "separated"
     },
-    "uva06pi": {
-      "partners": [
-        "p7xxzhl"
-      ],
-      "children": [
-        "p1"
-      ]
-    },
     "ucg6a0h": {
       "partners": [
         "p7xxzhl",
         "p25icbi"
       ],
-      "children": []
+      "children": [
+        "plxzfw1",
+        "psyqsqe",
+        "p1"
+      ]
     },
     "uvsvrj2": {
       "partners": [
