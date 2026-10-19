@@ -10,6 +10,7 @@ Pushing to `main` is what publishes the site: GitHub Pages picks it up within a 
 
 ## Steps
 
+0. Check the commit identity with `git config user.email`. It must be `ernest.popovici@yahoo.com`, set in this repo's local config. This is a work laptop, so the global config holds a work address that must never appear in this repo. If the email is anything else, stop and fix it with `git config --local user.email ernest.popovici@yahoo.com` before committing.
 1. If `data/family.json` changed, run `python3 scripts/validate.py`. Fix any errors before committing (warnings are fine, mention them).
 2. Look at `git status` and `git diff`. Stage only files that belong to the change, by name. Never stage `.DS_Store`, `*.tmp`, scratch or test files.
 3. Write the message (rules below).

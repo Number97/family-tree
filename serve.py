@@ -160,6 +160,9 @@ class Handler(SimpleHTTPRequestHandler):
             errors, _ = validate(new)
             if errors:
                 return self.send_json({"ok": False, "error": "Fix this first: " + errors[0]}, 400)
+            # Only commit with the identity set for this repo, never a machine-wide one.
+            if not git("config", "--local", "user.email").stdout.strip():
+                return self.send_json({"ok": False, "error": "No email set for this repo. Run: git config --local user.email you@example.com"}, 400)
             if not dirty():
                 push = git("push", "-q")
                 if push.returncode != 0:

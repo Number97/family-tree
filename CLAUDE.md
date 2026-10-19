@@ -17,6 +17,7 @@ A small, dependency-free family tree website. It can be viewed online through Gi
 ## Working rules
 
 - **Do the work end to end without asking:** make the change, check it, then commit and push to `main` using the `commit` skill. Pushing is what deploys.
+- **Commit only as `Ernest Popovici <ernest.popovici@yahoo.com>`**, set in this repo's local git config. The global config on this machine holds a work email that must never appear here.
 - **Never mention AI anywhere:** not in commit messages, code comments, the README or UI text. No `Co-Authored-By` trailers.
 - To add or change family members, use the `tree-edit` skill. To check the data, use `tree-validate`.
 - **Keep it simple:**
