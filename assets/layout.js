@@ -2,7 +2,7 @@
 (function () {
   const FT = (window.FT = window.FT || {});
 
-  const CARD_W = 196, CARD_H = 56, COUPLE_GAP = 36, SIB_GAP = 18, GROUP_GAP = 52, ROW_GAP = 88;
+  const CARD_W = 204, CARD_H = 64, COUPLE_GAP = 46, SIB_GAP = 18, GROUP_GAP = 52, ROW_GAP = 88;
   const ROW_H = CARD_H + ROW_GAP;
 
   // focus: { union } or { person }.  view: { down: {unionId: true}, up: {personId: bool} }
@@ -241,14 +241,20 @@
       const kids = visChildren(uid);
       const hidden = u.children.filter((c) => !vis(c));
       const y = ugen[uid] * ROW_H;
+      // Partners standing next to each other get a straight line; a third partner further
+      // along the row (someone with several relationships) is joined by a bracket underneath.
+      const sameUnit = ps.length === 2 && unitOf[ps[0]] === unitOf[ps[1]];
+      const adjacent = sameUnit && Math.abs(unitOf[ps[0]].members.indexOf(ps[0]) - unitOf[ps[0]].members.indexOf(ps[1])) === 1;
+      const pair = ps.length === 2 ? ps.map((p) => nodes[p]).sort((a, b) => a.x - b.x) : null;
       let ox = unionCenter(uid), oy = y + CARD_H / 2;
-      if (ps.length === 1) oy = y + CARD_H;
-      if (ps.length === 2 && unitOf[ps[0]] !== unitOf[ps[1]]) oy = y + CARD_H;
+      if (ps.length === 1 || (ps.length === 2 && !adjacent)) oy = y + CARD_H;
+      if (sameUnit && !adjacent) oy = y + CARD_H + 12;
       if (ox == null) ox = span(uid);
       unions.push({
         id: uid, partners: ps, children: kids, x: ox, y: oy, rowY: y,
-        couple: ps.length === 2 && unitOf[ps[0]] === unitOf[ps[1]] ? ps.map((p) => nodes[p]).sort((a, b) => a.x - b.x) : null,
-        status: u.status || '', start: u.start || '',
+        couple: adjacent ? pair : null,
+        bracket: sameUnit && !adjacent ? pair : null,
+        status: u.status || '', start: u.start || '', end: u.end || '',
         collapsed: !!down[uid] && hidden.length > 0,
         hiddenCount: hidden.length ? countHidden(tree, hidden, gen) : 0,
       });

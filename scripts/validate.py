@@ -52,10 +52,13 @@ def validate(data):
         partners, children = u.get("partners", []), u.get("children", [])
         if len(partners) > 2:
             errors.append(f"union {uid}: more than two partners")
-        if u.get("status") not in (None, "married", "partner", "separated"):
-            errors.append(f"union {uid}: status must be married, partner or separated")
-        if u.get("start") and not DATE_RE.match(u["start"]):
-            errors.append(f"union {uid}: start '{u['start']}' is not a valid date")
+        if u.get("status") not in (None, "married", "partner", "divorced", "separated"):
+            errors.append(f"union {uid}: status must be married, partner, divorced or separated")
+        for field in ("start", "end"):
+            if u.get(field) and not DATE_RE.match(u[field]):
+                errors.append(f"union {uid}: {field} '{u[field]}' is not a valid date")
+        if year(u.get("start")) and year(u.get("end")) and year(u["end"]) < year(u["start"]):
+            errors.append(f"union {uid}: ends ({u['end']}) before it starts ({u['start']})")
         for pid in partners + children:
             if pid not in people:
                 errors.append(f"union {uid}: refers to missing person '{pid}'")

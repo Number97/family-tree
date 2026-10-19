@@ -67,6 +67,8 @@ def describe(old, new):
             links.append(f"Linked {partners[0]} and {partners[1]} as a couple")
         elif before and before.get("status") != u.get("status") and len(partners) == 2:
             links.append(f"Marked {partners[0]} and {partners[1]} as {u.get('status')}")
+        elif before and before.get("end") != u.get("end") and u.get("end") and len(partners) == 2:
+            links.append(f"Set when {partners[0]} and {partners[1]} split up")
         elif before and before.get("start") != u.get("start") and len(partners) == 2:
             links.append(f"Set when {partners[0]} and {partners[1]} got together")
     if new.get("title") != old.get("title"):

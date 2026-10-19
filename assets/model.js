@@ -124,6 +124,42 @@
       const u = this.parentUnion(id);
       return u ? this.union(u).children.filter((c) => c !== id) : [];
     }
+    // Full siblings, half-siblings (one shared parent) and step-siblings (a parent's partner's children).
+    siblingsDetailed(id) {
+      const out = this.siblingsOf(id).map((s) => ({ id: s, kind: 'full' }));
+      const seen = new Set([id, ...out.map((o) => o.id)]);
+      const parents = this.parents(id);
+      for (const par of parents) {
+        for (const uid of this.unionsOf(par)) {
+          if (uid === this.parentUnion(id)) continue;
+          for (const c of this.union(uid).children) if (!seen.has(c)) { seen.add(c); out.push({ id: c, kind: 'half' }); }
+        }
+      }
+      for (const par of parents) {
+        for (const { id: other } of this.partnersOf(par)) {
+          if (parents.includes(other)) continue;
+          for (const uid of this.unionsOf(other)) {
+            for (const c of this.union(uid).children) if (!seen.has(c)) { seen.add(c); out.push({ id: c, kind: 'step' }); }
+          }
+        }
+      }
+      return out;
+    }
+    // Couples this person could be the child of: any family of one of their current parents.
+    parentOptions(id) {
+      const out = [];
+      for (const par of this.parents(id)) for (const uid of this.unionsOf(par)) if (!out.includes(uid)) out.push(uid);
+      const cur = this.parentUnion(id);
+      if (cur && !out.includes(cur)) out.unshift(cur);
+      return out;
+    }
+    unionLabel(uid) {
+      const ps = this.union(uid).partners.map((p) => this.person(p) && this.person(p).name ? this.person(p).name : 'Unnamed');
+      if (ps.length === 2) return ps[0] + ' & ' + ps[1];
+      if (ps.length === 1) return ps[0] + ' (other parent unknown)';
+      return 'Unknown parents';
+    }
+    isEnded(uid) { const u = this.union(uid); return u.status === 'divorced' || u.status === 'separated'; }
     isDeceased(id) { const p = this.person(id); return !!(p && (p.deceased || p.death)); }
     rootPartners() {
       const r = this.union(this.data.root);
@@ -158,18 +194,34 @@
       }
       return np;
     }
-    addPartner(pid) {
+    // With coParentOf, the new partner becomes the other parent in that single-parent family.
+    addPartner(pid, coParentOf) {
       const np = this.addPerson();
-      // Reuse a single-parent union (e.g. "child with unknown other parent") if there is one.
-      const single = this.unionsOf(pid).find((u) => this.union(u).partners.length === 1);
-      if (single) {
-        this.union(single).partners.push(np);
-        this.union(single).status = this.union(single).status || 'married';
+      if (coParentOf && this.union(coParentOf) && this.union(coParentOf).partners.length === 1) {
+        const u = this.union(coParentOf);
+        u.partners.push(np);
+        u.status = u.status || 'married';
         this.reindex();
       } else {
         this.addUnion([pid, np], [], { status: 'married' });
       }
       return np;
+    }
+    // A child of `parent` with someone else (other parent unknown for now).
+    addHalfSibling(pid, parent) {
+      const ns = this.addPerson();
+      this.addUnion([parent], [ns]);
+      return ns;
+    }
+    // Make `pid` a child of another couple, e.g. to turn a sibling into a half-sibling.
+    moveChild(pid, toUnion) {
+      const from = this.parentUnion(pid);
+      if (from === toUnion || !this.union(toUnion)) return;
+      if (from) this.union(from).children = this.union(from).children.filter((c) => c !== pid);
+      this.union(toUnion).children.push(pid);
+      this.reindex();
+      this.sortChildren(toUnion);
+      this.prune();
     }
     addChild(pid, unionId) {
       const nc = this.addPerson();
@@ -196,9 +248,16 @@
 
     removePerson(pid) {
       delete this.data.people[pid];
-      for (const [uid, u] of Object.entries(this.data.unions)) {
+      for (const u of Object.values(this.data.unions)) {
         u.partners = u.partners.filter((x) => x !== pid);
         u.children = u.children.filter((x) => x !== pid);
+      }
+      this.prune();
+    }
+
+    // Drop families that no longer connect anyone.
+    prune() {
+      for (const [uid, u] of Object.entries(this.data.unions)) {
         const keep = uid === this.data.root
           ? u.partners.length > 0
           : (u.partners.length >= 2) || (u.partners.length === 1 && u.children.length > 0) || (u.partners.length === 0 && u.children.length >= 2);
@@ -338,7 +397,8 @@
   }
 
   function partnerTerm(u, g) {
-    if (u.status === 'separated') return W(g, 'ex-husband', 'ex-wife', 'ex-partner');
+    if (u.status === 'divorced') return W(g, 'ex-husband', 'ex-wife', 'ex-spouse');
+    if (u.status === 'separated') return 'ex-partner';
     if (u.status === 'married') return W(g, 'husband', 'wife', 'spouse');
     return 'partner';
   }
@@ -390,7 +450,7 @@
       for (const x of ps) if (x !== husb) out.push('1 WIFE ' + I(x));
       for (const c of u.children) out.push('1 CHIL ' + I(c));
       if (u.status === 'married' || u.start) { out.push('1 MARR'); if (gd(u.start)) out.push('2 DATE ' + gd(u.start)); }
-      if (u.status === 'separated') out.push('1 DIV Y');
+      if (u.status === 'divorced' || u.status === 'separated') { out.push('1 DIV' + (gd(u.end) ? '' : ' Y')); if (gd(u.end)) out.push('2 DATE ' + gd(u.end)); }
     }
     out.push('0 TRLR');
     return out.join('\n') + '\n';

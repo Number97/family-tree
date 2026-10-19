@@ -33,8 +33,9 @@ All data lives in `data/family.json`. Edit it directly, then validate and commit
 - **unions** are couples and their children:
   - `partners` holds 0–2 person ids.
   - `children` lists the children in birth order.
-  - `status` is `"married"`, `"partner"` or `"separated"`.
-  - `start` is when they got together or married.
+  - `status` is `"married"`, `"partner"` (together, not married), `"divorced"` or `"separated"`.
+  - `start` is when they got together or married. `end` is when a divorce or separation happened.
+  - A relationship ended by death needs no `end`: keep the status (e.g. `"married"`) and give the person a `death` date. The page shows "until X's death".
   - Every person is a child in at most one union.
   - Siblings whose parents are unknown share a union with `"partners": []`.
 - **root** is the union shown in the centre (Ernest and his partner). Don't change it unless asked.
@@ -47,6 +48,8 @@ All data lives in `data/family.json`. Edit it directly, then validate and commit
 - **Partner** of X: create a new union `{ "partners": [X, new], "children": [], "status": "married" }`, or use whatever status the user said.
 - **Child** of X and Y: append to the union where both are partners. If the other parent is unknown, use a union whose only partner is X.
 - **Sibling** of X: add to X's parent union's `children`. If X has no parent union, create one with `"partners": []` and both children.
+- **Half-sibling** of X through parent P: put them in a different union of P (with the other parent, or `"partners": [P]` if unknown). Half and step relationships come from the structure, so never store them as a label.
+- **Someone with several partners** (remarriage, divorce, widowhood) gets one union per relationship, each with its own children.
 - Keep `children` sorted by birth year when years are known.
 
 ## Steps

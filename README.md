@@ -12,8 +12,12 @@ Our family tree, as a simple web page.
 3. Click a person to change their name, dates or notes in the side panel.
    - Dates can be just a year (`1952`), an approximate year (`c. 1950`) or a full date (`14.03.1952`).
    - Tick **Passed away** if someone has died and the date is unknown.
-4. Everything saves automatically to `data/family.json`. Undo with ⌘Z.
-5. Press **Publish** when you're happy. This saves a version to GitHub, and the online page updates about a minute later.
+4. **Complicated families:**
+   - Every relationship is its own couple. Set it to Married, Together, Divorced or Separated, with "since" and "until" dates. Divorced or separated couples get a dotted line.
+   - A marriage ended by death just needs the date of death on the person.
+   - Half-siblings: use **Add → Half-sibling**. For someone already in the tree, change **Child of …** in their window to the right couple.
+5. Everything saves automatically to `data/family.json`. Undo with ⌘Z.
+6. Press **Publish** when you're happy. This saves a version to GitHub, and the online page updates about a minute later.
 
 To stop, close the terminal window (or press Ctrl+C in it).
 

@@ -115,7 +115,11 @@ body:not(.editing) .edit-only { display: none !important; }
 .rels select, .rels .mini {
   font: inherit; font-size: 12px; height: 28px; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 0 6px; color: inherit;
 }
-.rels .mini { width: 92px; }
+.rels .mini { width: 96px; }
+.rels .pblock { padding: 2px 0 8px; }
+.rels .pctl { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.rels select[data-move] { width: 100%; height: 30px; }
+.rels .tag { margin-left: 0; vertical-align: 1px; }
 .p-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .p-actions .spacer { flex: 1; }
 .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); padding: 0 18px; }
