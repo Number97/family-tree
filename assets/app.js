@@ -245,8 +245,8 @@
     let h = v.hide[id];
     if (!h) return v;
     if (h === true) { h = { up: true, u: {} }; for (const uid of state.tree.unionsOf(id)) h.u[uid] = true; }
-    h = { up: h.up, u: Object.assign({}, h.u) };
-    if (part === 'up') delete h.up; else delete h.u[part];
+    h = { up: h.up, self: h.self, u: Object.assign({}, h.u) };
+    if (part === 'up') delete h.up; else if (part === 'self') delete h.self; else delete h.u[part];
     v.hide[id] = h;
     return v;
   }
@@ -373,6 +373,12 @@
       const title = c.byHide ? `Show ${t.firstName(c.person)}\u2019s parents\u2019 side again`
         : c.byFocus ? `Show ${t.firstName(c.person)}\u2019s parents (${c.count})` : `Show parents (${c.count})`;
       ctls.push(chip(...at(x, n.y - 29), c.count ? '▲ ' + c.count : '▲', act, title));
+    }
+    const selfAt = {};
+    for (const c of L.selfChips || []) {
+      const n = L.nodes[c.near], k = (selfAt[c.near] = (selfAt[c.near] || 0) + 1) - 1;
+      const label = '+ ' + t.firstName(c.person);
+      ctls.push(chip(...at(n.x + 10 + k * 64, n.y - 12), label, `data-act="unhide-self" data-p="${c.person}"`, `Show ${t.firstName(c.person)} again`));
     }
     const perPerson = {};
     for (const c of L.hideChips || []) (perPerson[c.person] = perPerson[c.person] || []).push(c);
@@ -504,9 +510,9 @@
   }
   // How many people on screen would disappear if some of this person's links were cut:
   // `up` = their parents' side, `unions` = relationships (partner and children together).
-  function hiddenCount(id, up, unions) {
+  function hiddenCount(id, up, unions, self) {
     const t = state.tree, vis = state.L.nodes;
-    const starts = state.L.rootPartners.filter((r) => vis[r]);
+    const starts = state.L.rootPartners.filter((r) => vis[r] && !(self && r === id));
     if (!starts.length) return 0;
     const seen = new Set(starts), stack = starts.slice();
     while (stack.length) {
@@ -523,7 +529,7 @@
       } else {
         next = t.parents(p).concat(t.siblingsOf(p), t.partnersOf(p).map((o) => o.id), t.childrenOf(p));
       }
-      for (const n of next) if (vis[n] && !seen.has(n)) { seen.add(n); stack.push(n); }
+      for (const n of next) if (vis[n] && !seen.has(n) && !(self && n === id)) { seen.add(n); stack.push(n); }
     }
     return Object.keys(vis).filter((p) => !seen.has(p)).length;
   }
@@ -533,6 +539,10 @@
     const unions = t.unionsOf(id).filter((u) => u !== rootU && state.L.unions.some((x) => x.id === u));
     const name = esc(t.firstName(id));
     const items = [];
+    if (!state.L.rootPartners.includes(id)) {
+      const me = hiddenCount(id, true, none, true);
+      items.push(`<button class="item" data-hide="self" data-p="${id}"><span>${name} and everyone only connected through ${t.firstName(id) === 'Unnamed' ? 'them' : name}</span><span class="muted">${me}</span></button><div class="sep"></div>`);
+    }
     const n = hiddenCount(id, true, none);
     if (n) items.push(`<button class="item" data-hide="up" data-p="${id}"><span>${name}\u2019s parents\u2019 side</span><span class="muted">${n}</span></button>`);
     for (const uid of unions) {
@@ -543,7 +553,7 @@
       items.push(`<button class="item" data-hide="u:${uid}" data-p="${id}"><span>${label}</span><span class="muted">${c}</span></button>`);
     }
     const all = hiddenCount(id, true, new Set(unions));
-    if (items.length > 1 && all) items.push(`<div class="sep"></div><button class="item" data-hide="all" data-p="${id}"><span>All of the above</span><span class="muted">${all}</span></button>`);
+    if (items.length > 2 && all) items.push(`<div class="sep"></div><button class="item" data-hide="all" data-p="${id}"><span>All of the above</span><span class="muted">${all}</span></button>`);
     const h = `<div class="hd">Hide for ${name}</div>` + (items.length ? items.join('')
       : `<div class="empty">Nothing to hide: everyone around ${name} is also connected another way.</div>`);
     openPopover(h, rect, 'wide');
@@ -552,6 +562,7 @@
     const cur = state.view.hide[id];
     const h = cur && cur !== true ? cur : { u: {} };
     h.u = h.u || {};
+    if (what === 'self') h.self = true;
     if (what === 'up' || what === 'all') h.up = true;
     if (what.startsWith('u:')) h.u[what.slice(2)] = true;
     if (what === 'all') {
@@ -560,16 +571,18 @@
     state.view.hide[id] = h;
     saveView();
     closePopover();
-    render(id, { animate: true });
+    // When the person goes, keep a relative still on screen steady instead.
+    const keep = what === 'self' ? state.tree.partnersOf(id).map((o) => o.id).concat(state.tree.parents(id), state.tree.childrenOf(id)).find((x) => state.L.nodes[x]) : id;
+    render(keep, { animate: true });
   }
   function unhide(id, part) {
     let h = state.view.hide[id];
     if (!h) return;
     if (h === true) { h = { up: true, u: {} }; for (const uid of state.tree.unionsOf(id)) h.u[uid] = true; }
-    if (part === 'up') delete h.up; else if (h.u) delete h.u[part];
-    if (!h.up && !Object.keys(h.u || {}).length) delete state.view.hide[id]; else state.view.hide[id] = h;
+    if (part === 'up') delete h.up; else if (part === 'self') delete h.self; else if (h.u) delete h.u[part];
+    if (!h.up && !h.self && !Object.keys(h.u || {}).length) delete state.view.hide[id]; else state.view.hide[id] = h;
     saveView();
-    render(id, { animate: true });
+    render(part === 'self' ? null : id, { animate: true });
   }
   function showTip(id, ev) {
     const tip = $('#tip'), p = P(id);
@@ -1309,6 +1322,7 @@
         if (a === 'hide-branch') { hideMenu(act.dataset.p, act.getBoundingClientRect()); return; }
         if (a === 'unhide-up') { unhide(act.dataset.p, 'up'); return; }
         if (a === 'unhide-u') { unhide(act.dataset.p, act.dataset.u); return; }
+        if (a === 'unhide-self') { unhide(act.dataset.p, 'self'); return; }
         if (a === 'reveal-u') {
           state.view.reveal[act.dataset.u] = true; saveView();
           const u = state.tree.union(act.dataset.u);

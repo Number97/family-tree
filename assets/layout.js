@@ -32,8 +32,12 @@
     const gen = {}, reach = {}, visU = new Set(), ugen = {};
     const order = [];
     const q = [];
+    // Someone hidden entirely ("−" → the person themselves) is skipped, unless they are the focus.
+    const selfHidden = new Set();
     const addP = (p, g, type) => {
       if (p in gen || !tree.person(p)) return;
+      const hs = hide[p];
+      if (hs && hs !== true && hs.self && !rootPartners.includes(p)) { selfHidden.add(p); return; }
       gen[p] = g; reach[p] = type; q.push(p); order.push(p);
     };
     const upHidden = (p) => (p in upState ? upState[p] : reach[p] === 'spouse');
@@ -651,6 +655,12 @@
     }
     // People whose branch was hidden with the "−" button.
     // One bubble per hidden relationship (partner and their children together).
+    // A "+ name" bubble on a visible relative brings back a person hidden entirely.
+    const selfChips = [];
+    for (const p of selfHidden) {
+      const near = tree.partnersOf(p).map((o) => o.id).concat(tree.childrenOf(p), tree.parents(p), tree.siblingsOf(p)).find(vis);
+      if (near) selfChips.push({ person: p, near });
+    }
     const hideChips = [];
     for (const p of order) {
       if (!hideOf(p)) continue;
@@ -668,7 +678,7 @@
       minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y + n.h);
     }
     return {
-      nodes, unions, upChips, hideChips, reach, rootPartners, crossings: crossingCount,
+      nodes, unions, upChips, hideChips, selfChips, reach, rootPartners, crossings: crossingCount,
       center: { x: center, y: CARD_H / 2 },
       bounds: { minX, maxX, minY: minY - 30, maxY: maxY + 30 },
     };
