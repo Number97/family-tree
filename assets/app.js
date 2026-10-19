@@ -553,12 +553,12 @@
       else if (kind === 'partner') nid = t.addPartner(pid);
       else if (kind === 'child') {
         nid = t.addChild(pid, ref);
-        delete state.view.down[t.parentUnion(nid)];
+        state.view.down[t.parentUnion(nid)] = false;
       } else if (kind === 'half') {
         nid = t.addHalfSibling(pid, ref);
       } else {
         nid = t.addSibling(pid);
-        delete state.view.down[t.parentUnion(nid)];
+        state.view.down[t.parentUnion(nid)] = false;
         if (t.parentUnion(pid)) state.view.up[pid] = false;
       }
     }, { anchor: pid });
@@ -821,7 +821,17 @@
     $('#search').blur();
     closePopover();
     if (!state.L.nodes[id]) {
-      state.view = { down: {}, up: {} };
+      // Unfold the branches on the way to them.
+      const t = state.tree, seen = new Set(), stack = [id];
+      while (stack.length) {
+        const p = stack.pop();
+        if (seen.has(p)) continue;
+        seen.add(p);
+        const pu = t.parentUnion(p);
+        if (pu) { state.view.down[pu] = false; t.union(pu).partners.forEach((q) => { state.view.up[q] = false; stack.push(q); }); }
+        state.view.up[p] = false;
+        for (const { id: q } of t.partnersOf(p)) stack.push(q);
+      }
       saveView();
       render();
       if (!state.L.nodes[id]) state.focus = { person: id };
@@ -935,7 +945,7 @@
         if (a === 'add') { addMenu(act.dataset.p, act.getBoundingClientRect()); return; }
         if (a === 'couple') { coupleMenu(act.dataset.u, act.getBoundingClientRect()); return; }
         if (a === 'fold') { state.view.down[act.dataset.u] = true; saveView(); render(state.selected || state.tree.union(act.dataset.u).partners[0]); return; }
-        if (a === 'unfold') { delete state.view.down[act.dataset.u]; saveView(); render(state.tree.union(act.dataset.u).partners[0]); return; }
+        if (a === 'unfold') { state.view.down[act.dataset.u] = false; saveView(); render(state.tree.union(act.dataset.u).partners[0]); return; }
         if (a === 'show-up') { state.view.up[act.dataset.p] = false; saveView(); render(act.dataset.p); return; }
         if (a === 'hide-up') { state.view.up[act.dataset.p] = true; saveView(); render(act.dataset.p); return; }
       }
@@ -1058,9 +1068,10 @@
       const k = m.dataset.menu;
       if (k === 'fit') fitAll();
       if (k === 'expand') {
-        const up = {};
+        const up = {}, down = {};
         for (const id of Object.keys(state.tree.data.people)) up[id] = false;
-        state.view = { down: {}, up };
+        for (const id of Object.keys(state.tree.data.unions)) down[id] = false;
+        state.view = { down, up };
         saveView();
         render();
         fitAll();

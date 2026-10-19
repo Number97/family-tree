@@ -23,12 +23,17 @@
       gen[p] = g; reach[p] = type; q.push(p); order.push(p);
     };
     const upHidden = (p) => (p in upState ? upState[p] : reach[p] === 'spouse');
+    // Folded unless the viewer chose otherwise. By default distant branches start folded:
+    // the siblings of great-grandparents and beyond, and the families of great-aunts/uncles.
+    const folded = {};
+    const isFolded = (uid) => folded[uid];
     const visitUnion = (uid, g, fromChild) => {
+      folded[uid] = uid in down ? !!down[uid] : (fromChild ? g <= -4 : g <= -2);
       if (visU.has(uid)) return;
       visU.add(uid); ugen[uid] = g;
       const u = tree.union(uid);
       for (const p of u.partners) addP(p, g, fromChild ? 'ancestor' : 'spouse');
-      if (!down[uid]) for (const c of u.children) addP(c, g + 1, 'child');
+      if (!folded[uid]) for (const c of u.children) addP(c, g + 1, 'child');
     };
     rootPartners.forEach((p) => addP(p, 0, 'root'));
     if (rootUnion) visitUnion(rootUnion, 0, false);
@@ -497,7 +502,7 @@
         couple: adjacent ? pair : null,
         bracket: far ? pair : null, depth,
         status: u.status || '', start: u.start || '', end: u.end || '',
-        collapsed: !!down[uid] && hidden.length > 0,
+        collapsed: !!isFolded(uid) && hidden.length > 0,
         hiddenCount: hidden.length ? countHidden(tree, hidden, gen) : 0,
       });
     }
