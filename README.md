@@ -22,13 +22,27 @@ To stop, close the terminal window (or press Ctrl+C in it).
 
 ## Getting around
 
+- **Focus mode:** the tree shows the family around one person, about two steps. Click any card to move the focus there; the tree glides into place. Click the person in focus (or the small ✎/ⓘ on any card, or double-click) to open their window. "Back to …" at the top returns to the two of you. A "+N" bubble at the edge means more family that way; click it to move there.
 - **Move:** drag, or scroll with two fingers.
-- **Zoom:** pinch, ⌘ + scroll, or the +/− buttons.
-- **Fold a branch:** hover over a couple and click the small arrow under them to fold their children away, or the arrow above a person to fold away their parents. A folded branch shows a **+N** bubble; click it to unfold.
+- **Zoom:** pinch, ⌘ + scroll, or the +/− buttons. Zoomed out, cards show big names, then just initials.
+- **Hover** over someone to light up their closest family.
+- **Hide a branch:** hover a card and click the **−** on its left to hide everyone who is only connected through that person (others stay). A **+N** bubble under the card brings them back.
 - **Search:** type a name in the search box, or press `/`.
-- **Focus on someone:** click a person, then **Centre the tree here**. Use the button at the top to come back.
 - **Birthdays:** the cake button shows upcoming birthdays and anniversaries.
 - **Downloads:** the ⋯ menu saves the tree as an image, as GEDCOM (for other genealogy apps), or as raw data.
+
+**⚙ Settings** (saved per browser) switch each of these on or off:
+
+| Setting | What it does |
+| --- | --- |
+| Focus mode (1, 2 or 3 steps) | Show the family around one person instead of everyone |
+| Smaller further away | Cards shrink the more distant the relative |
+| Less detail when zoomed out | Big names, then initials, as you zoom out |
+| Highlight on hover | Light up someone's closest family |
+| Colour each family | Each family's lines get their own colour |
+| Hide-branch buttons (−) | The smart hide described above |
+| Fewer crossing lines | Rearranges families to reduce crossings |
+| Circle layout | The tree as rings (oldest in the middle); scroll to turn it |
 
 The avatar colour shows whether someone is a man (blue) or a woman (pink); grey means not set. People who have passed away have a soft grey card and paler colours, and their years read like 1940 – 2019.
 

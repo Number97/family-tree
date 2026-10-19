@@ -6,8 +6,8 @@ A small, dependency-free family tree website. It can be viewed online through Gi
 
 - `index.html` with `assets/style.css` is the page.
 - `assets/model.js` holds the data model, dates, relationship names and GEDCOM export.
-- `assets/layout.js` positions the cards: one row per generation, couples side by side.
-- `assets/app.js` handles rendering, pan and zoom, the side panel, editing, search and downloads.
+- `assets/layout.js` positions the cards: one row per generation, couples side by side. It also handles the focus radius, card sizes by distance, hidden branches and crossing reduction.
+- `assets/app.js` handles rendering (straight rows or the circle), focus navigation, animation, zoom-dependent detail, hover highlighting, settings, the edit window, editing, search and downloads.
 - `data/family.json` is the only data store. Its format is described in `.claude/skills/tree-edit/SKILL.md`.
 - `serve.py` is the local server, using only the Python standard library. It serves the site, turns on editing, writes edits to `data/family.json`, and runs `git commit` and `git push` when the Publish button is pressed.
 - `start.command` is the double-click launcher for `serve.py` on macOS.

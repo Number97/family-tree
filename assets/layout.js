@@ -8,11 +8,22 @@
   const COUPLE_GAP = 30, EX_GAP = 84, SIB_GAP = 20, HALF_GAP = 34, GROUP_GAP = 72;
   const ROW_H = CARD_H + ROW_GAP;
 
-  // focus: { union } or { person }.  view: { down: {unionId: true}, up: {personId: bool} }
-  function layout(tree, focus, view) {
-    const down = view.down || {}, upState = view.up || {};
+  // focus: { union } or { person }.
+  // view: { down: {unionId: bool}, up: {personId: bool}, hide: {personId: true} }
+  // opts: { radius: number|null (focus mode), sizes: bool (smaller further away), improved: bool (fewer crossings) }
+  function layout(tree, focus, view, opts) {
+    opts = opts || {};
+    const down = view.down || {}, upState = view.up || {}, hide = view.hide || {};
     const rootUnion = focus.union && tree.union(focus.union) ? focus.union : null;
     const rootPartners = rootUnion ? tree.union(rootUnion).partners.slice() : [focus.person];
+
+    // Steps away from the focus: `kd` counts every relationship as one step (for focus mode),
+    // `sd` treats partners as zero steps so couples stay the same size (for card sizes).
+    const kd = distances(tree, rootPartners, 1), sd = distances(tree, rootPartners, 0);
+    const R = opts.radius == null ? Infinity : opts.radius;
+    const near = (p) => (kd[p] ?? Infinity) <= R;
+    const scaleOf = (p) => (opts.sizes ? Math.max(0.55, 1 - 0.15 * (sd[p] ?? 3)) : 1);
+    const W = (p) => CARD_W * scaleOf(p), H = (p) => CARD_H * scaleOf(p);
 
     // ---- 1. who is visible, and in which generation ----
     const gen = {}, reach = {}, visU = new Set(), ugen = {};
@@ -25,23 +36,33 @@
     const upHidden = (p) => (p in upState ? upState[p] : reach[p] === 'spouse');
     // Folded unless the viewer chose otherwise. By default distant branches start folded:
     // the siblings of great-grandparents and beyond, and the families of great-aunts/uncles.
-    const folded = {};
+    const folded = {}, cut = {};
     const isFolded = (uid) => folded[uid];
+    // In focus mode, default folds don't apply: the distance from the focus decides.
     const visitUnion = (uid, g, fromChild) => {
-      folded[uid] = uid in down ? !!down[uid] : (fromChild ? g <= -4 : g <= -2);
+      folded[uid] = uid in down ? !!down[uid] : (R !== Infinity ? false : fromChild ? g <= -4 : g <= -2);
       if (visU.has(uid)) return;
       visU.add(uid); ugen[uid] = g;
       const u = tree.union(uid);
       for (const p of u.partners) addP(p, g, fromChild ? 'ancestor' : 'spouse');
-      if (!folded[uid]) for (const c of u.children) addP(c, g + 1, 'child');
+      if (folded[uid]) return;
+      for (const c of u.children) {
+        if (near(c)) addP(c, g + 1, 'child'); else if (!(c in gen)) cut[uid] = true;
+      }
     };
+    const upCut = {};
     rootPartners.forEach((p) => addP(p, 0, 'root'));
     if (rootUnion) visitUnion(rootUnion, 0, false);
     while (q.length) {
       const p = q.shift();
+      // A hidden branch: this person stays, but nothing is reached through them.
+      if (hide[p] && !rootPartners.includes(p)) continue;
       for (const uid of tree.unionsOf(p)) visitUnion(uid, gen[p], false);
       const pu = tree.parentUnion(p);
-      if (pu && !visU.has(pu) && !upHidden(p)) visitUnion(pu, gen[p] - 1, true);
+      if (pu && !visU.has(pu) && !upHidden(p)) {
+        if (tree.union(pu).partners.some(near) || !tree.union(pu).partners.length) visitUnion(pu, gen[p] - 1, true);
+        else upCut[p] = true;
+      }
     }
     const vis = (p) => p in gen;
     const visParentUnion = (p) => { const pu = tree.parentUnion(p); return pu && visU.has(pu) ? pu : null; };
@@ -234,25 +255,26 @@
     const ux = {};
     const pairGap = (a, b) => {
       const uid = tree.unionsOf(a).find((x) => tree.union(x).partners.includes(b));
-      if (!uid) return EX_GAP;
-      const st = tree.union(uid).status;
-      return st === 'separated' || st === 'divorced' ? EX_GAP : COUPLE_GAP;
+      const st = uid && tree.union(uid).status;
+      return (!uid || st === 'separated' || st === 'divorced' ? EX_GAP : COUPLE_GAP) * Math.max(scaleOf(a), scaleOf(b));
     };
-    for (const u of units) {
+    const setOffs = (u) => {
       u.offs = [0];
-      for (let i = 1; i < u.members.length; i++) u.offs.push(u.offs[i - 1] + CARD_W + pairGap(u.members[i - 1], u.members[i]));
-    }
+      for (let i = 1; i < u.members.length; i++) u.offs.push(u.offs[i - 1] + W(u.members[i - 1]) + pairGap(u.members[i - 1], u.members[i]));
+    };
+    for (const u of units) setOffs(u);
     const offOf = (p) => { const u = unitOf[p]; return u.offs[u.members.indexOf(p)]; };
-    const unitW = (u) => u.offs[u.offs.length - 1] + CARD_W;
+    const unitW = (u) => u.offs[u.offs.length - 1] + W(u.members[u.members.length - 1]);
     const parentUnionsOf = (u) => [...new Set(u.members.map(visParentUnion).filter(Boolean))];
     const gapBetween = (a, b) => {
       const pa = parentUnionsOf(a), pb = parentUnionsOf(b);
-      if (pa.some((x) => pb.includes(x))) return SIB_GAP;
+      const k = Math.max(scaleOf(a.members[a.members.length - 1]), scaleOf(b.members[0]));
+      if (pa.some((x) => pb.includes(x))) return SIB_GAP * k;
       const parentsOf = (u) => u.members.flatMap((m) => tree.parents(m));
       const qa = parentsOf(a), qb = parentsOf(b);
-      return qa.some((x) => qb.includes(x)) ? HALF_GAP : GROUP_GAP;
+      return (qa.some((x) => qb.includes(x)) ? HALF_GAP : GROUP_GAP) * k;
     };
-    const cx = (p) => ux[unitOf[p].id] + offOf(p) + CARD_W / 2;
+    const cx = (p) => ux[unitOf[p].id] + offOf(p) + W(p) / 2;
     // Partners in one chain but not next to each other (someone with several partners):
     // their children hang from the gap beside the partner who isn't the shared one.
     const farPair = (uid) => {
@@ -266,9 +288,12 @@
     const unionCenter = (uid) => {
       const far = farPair(uid);
       if (far) {
-        return degree(far.b) <= degree(far.a)
-          ? cx(far.b) - CARD_W / 2 - (offOf(far.b) - offOf(far.m[far.m.indexOf(far.b) - 1]) - CARD_W) / 2
-          : cx(far.a) + CARD_W / 2 + (offOf(far.m[far.m.indexOf(far.a) + 1]) - offOf(far.a) - CARD_W) / 2;
+        if (degree(far.b) <= degree(far.a)) {
+          const prev = far.m[far.m.indexOf(far.b) - 1];
+          return cx(far.b) - W(far.b) / 2 - (offOf(far.b) - offOf(prev) - W(prev)) / 2;
+        }
+        const next = far.m[far.m.indexOf(far.a) + 1];
+        return cx(far.a) + W(far.a) / 2 + (offOf(next) - offOf(far.a) - W(far.a)) / 2;
       }
       const ps = tree.union(uid).partners.filter(vis);
       if (ps.length) return ps.reduce((s, p) => s + cx(p), 0) / ps.length;
@@ -317,7 +342,7 @@
         let lo = Infinity, hi = -Infinity;
         for (const c of kids) {
           const u = unitOf[c];
-          const cc = rel[u.id] + offOf(c) + CARD_W / 2;
+          const cc = rel[u.id] + offOf(c) + W(c) / 2;
           lo = Math.min(lo, cc); hi = Math.max(hi, cc);
         }
         const shift = unionCenter(uid) - (lo + hi) / 2;
@@ -387,7 +412,7 @@
       for (const k of ku) { rel[k.id] = x; x += unitW(k) + SIB_GAP; }
       for (const c of visChildren(best.pu)) {
         if (!(unitOf[c].id in rel)) continue;
-        const cc = rel[unitOf[c].id] + offOf(c) + CARD_W / 2;
+        const cc = rel[unitOf[c].id] + offOf(c) + W(c) / 2;
         lo = Math.min(lo, cc); hi = Math.max(hi, cc);
       }
       return { x: rel[u.id] + unionCenter(best.pu) - (lo + hi) / 2, prio: 1 + best.score };
@@ -461,16 +486,86 @@
       // From the centre row down: children sit below their parents.
       for (const g of gens.filter((x) => x >= 0)) sortRow(g, (u, pus) => (pus.length ? { x: unionCenter(pus[0]), strong: true } : null));
     };
+    // Fewer crossing lines: swap neighbouring family groups (and flip couples) whenever that
+    // lowers the number of parent-child lines that cross. The order of siblings is kept.
+    const improve = () => {
+      const slot = {};
+      const slots = (g) => {
+        let x = 0;
+        for (const u of rows[g] || []) { u.members.forEach((m, i) => { slot[m] = x + i; }); x += u.members.length + 0.6; }
+      };
+      gens.forEach(slots);
+      const knot = (uid) => {
+        const ps = tree.union(uid).partners.filter(vis);
+        return ps.length ? ps.reduce((a, p) => a + slot[p], 0) / ps.length : null;
+      };
+      const edgesOf = {};
+      for (const uid of visU) {
+        if (!tree.union(uid).partners.some(vis)) continue;
+        const g = ugen[uid];
+        for (const c of visChildren(uid)) (edgesOf[g] = edgesOf[g] || []).push([uid, c]);
+      }
+      const crossings = (g) => {
+        const es = (edgesOf[g] || []).map(([uid, c]) => [knot(uid), slot[c]]);
+        let n = 0;
+        for (let i = 0; i < es.length; i++) for (let j = i + 1; j < es.length; j++) {
+          if ((es[i][0] - es[j][0]) * (es[i][1] - es[j][1]) < 0) n++;
+        }
+        return n;
+      };
+      const around = (g) => crossings(g - 1) + crossings(g);
+      const fixed = (u) => u.members.some((m) => rootPartners.includes(m));
+      const blockKey = (u) => {
+        const pu = u.members.map(visParentUnion).find((x) => x && tree.union(x).partners.some(vis));
+        return pu ? 'u:' + pu : 'x:' + u.id;
+      };
+      for (let pass = 0; pass < 6; pass++) {
+        let better = false;
+        for (const g of gens) {
+          const r = rows[g];
+          // flip couples
+          for (const u of r) {
+            if (u.members.length !== 2 || fixed(u)) continue;
+            const before = around(g);
+            u.members.reverse(); slots(g);
+            if (around(g) < before) { better = true; setOffs(u); } else { u.members.reverse(); slots(g); }
+          }
+          // swap neighbouring family groups on the same side
+          const blocks = [];
+          for (const u of r) {
+            const k = blockKey(u), last = blocks[blocks.length - 1];
+            if (last && last.key === k) last.units.push(u); else blocks.push({ key: k, units: [u] });
+          }
+          for (let i = 0; i + 1 < blocks.length; i++) {
+            const a = blocks[i], b = blocks[i + 1];
+            if (a.units[0].side !== b.units[0].side || a.units.some(fixed) || b.units.some(fixed)) continue;
+            const before = around(g);
+            blocks[i] = b; blocks[i + 1] = a;
+            rows[g] = blocks.flatMap((x) => x.units); slots(g);
+            if (around(g) < before) better = true;
+            else { blocks[i] = a; blocks[i + 1] = b; rows[g] = blocks.flatMap((x) => x.units); slots(g); }
+          }
+          rowGaps[g] = rows[g].slice(0, -1).map((u, i) => gapBetween(u, rows[g][i + 1]));
+        }
+        if (!better) break;
+      }
+      let total = 0;
+      for (const g of gens) total += crossings(g);
+      return total;
+    };
     settle(60);
     reorder();
     settle(60);
     reorder();
+    const crossingCount = opts.improved ? improve() : null;
     settle(120);
     straighten();
 
     // ---- 5. output ----
     const nodes = {};
-    for (const p of order) nodes[p] = { x: cx(p) - CARD_W / 2, y: gen[p] * ROW_H, gen: gen[p] };
+    for (const p of order) {
+      nodes[p] = { x: cx(p) - W(p) / 2, y: gen[p] * ROW_H + (CARD_H - H(p)) / 2, w: W(p), h: H(p), s: scaleOf(p), gen: gen[p], dist: sd[p] ?? 9 };
+    }
     const center = rootPartners.filter(vis).reduce((s, p) => s + cx(p), 0) / Math.max(1, rootPartners.filter(vis).length);
 
     const unions = [];
@@ -487,7 +582,8 @@
       const adjacent = sameUnit && Math.abs(unitOf[ps[0]].members.indexOf(ps[0]) - unitOf[ps[0]].members.indexOf(ps[1])) === 1;
       const pair = ps.length === 2 ? ps.map((p) => nodes[p]).sort((a, b) => a.x - b.x) : null;
       let ox = unionCenter(uid), oy = y + CARD_H / 2;
-      if (ps.length === 1 || (ps.length === 2 && !adjacent)) oy = y + CARD_H;
+      if (ps.length === 1) oy = nodes[ps[0]].y + nodes[ps[0]].h;
+      else if (ps.length === 2 && !adjacent) oy = y + CARD_H;
       const far = farPair(uid);
       let depth = 12;
       if (far) {
@@ -502,7 +598,8 @@
         couple: adjacent ? pair : null,
         bracket: far ? pair : null, depth,
         status: u.status || '', start: u.start || '', end: u.end || '',
-        collapsed: !!isFolded(uid) && hidden.length > 0,
+        collapsed: (!!isFolded(uid) || !!cut[uid]) && hidden.length > 0,
+        byFocus: !!cut[uid] && !isFolded(uid),
         hiddenCount: hidden.length ? countHidden(tree, hidden, gen) : 0,
       });
     }
@@ -511,7 +608,7 @@
     for (const u of unions) {
       u.busY = u.rowY + CARD_H + ROW_GAP / 2;
       if (!u.children.length) continue;
-      const xs = u.children.map((c) => nodes[c].x + CARD_W / 2).concat(u.partners.length ? [u.x] : []);
+      const xs = u.children.map((c) => nodes[c].x + nodes[c].w / 2).concat(u.partners.length ? [u.x] : []);
       u.lo = Math.min(...xs); u.hi = Math.max(...xs);
       (byRow[u.rowY] = byRow[u.rowY] || []).push(u);
     }
@@ -536,20 +633,47 @@
       if (pu2 && !visU.has(pu2)) {
         const u = tree.union(pu2);
         const seeds = u.partners.concat(u.children).filter((x) => !vis(x));
-        upChips.push({ person: p, count: countHidden(tree, seeds, gen) });
+        upChips.push({ person: p, count: countHidden(tree, seeds, gen), byFocus: !!upCut[p] });
       }
+    }
+    // People whose branch was hidden with the "−" button.
+    const hideChips = [];
+    for (const p of order) {
+      if (!hide[p] || rootPartners.includes(p)) continue;
+      const seeds = tree.parents(p).concat(tree.siblingsOf(p), tree.partnersOf(p).map((o) => o.id), tree.childrenOf(p));
+      const count = countHidden(tree, seeds, gen);
+      if (count) hideChips.push({ person: p, count });
     }
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const n of Object.values(nodes)) {
-      minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x + CARD_W);
-      minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y + CARD_H);
+      minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x + n.w);
+      minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y + n.h);
     }
     return {
-      nodes, unions, upChips, reach, rootPartners,
+      nodes, unions, upChips, hideChips, reach, rootPartners, crossings: crossingCount,
       center: { x: center, y: CARD_H / 2 },
       bounds: { minX, maxX, minY: minY - 30, maxY: maxY + 30 },
     };
+  }
+
+  // Relationship steps from the start people: parents, children and siblings are one step;
+  // partners are `partnerCost` steps (0 or 1).
+  function distances(tree, starts, partnerCost) {
+    const d = {};
+    const dq = [];
+    for (const s of starts) if (tree.person(s)) { d[s] = 0; dq.push(s); }
+    while (dq.length) {
+      const p = dq.shift();
+      const step = (n, c) => {
+        if (d[n] != null && d[n] <= d[p] + c) return;
+        d[n] = d[p] + c;
+        if (c === 0) dq.unshift(n); else dq.push(n);
+      };
+      for (const { id } of tree.partnersOf(p)) step(id, partnerCost);
+      for (const n of tree.parents(p).concat(tree.siblingsOf(p), tree.childrenOf(p))) step(n, 1);
+    }
+    return d;
   }
 
   // Number of people reachable from `seeds` without passing through visible people.
@@ -585,5 +709,5 @@
     return out;
   }
 
-  Object.assign(FT, { layout, CARD_W, CARD_H, COUPLE_GAP, ROW_GAP, ROW_H });
+  Object.assign(FT, { layout, distances, CARD_W, CARD_H, COUPLE_GAP, ROW_GAP, ROW_H });
 })();

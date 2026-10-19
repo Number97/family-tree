@@ -16,6 +16,7 @@
     <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
     <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
   </svg>
@@ -37,6 +38,7 @@
       <button class="edit-only publish" id="publish" title="Put the latest version online">Publish</button>
       <button class="icon" id="btn-dates" title="Birthdays"><svg class="i"><use href="#i-cake"/></svg></button>
       <button class="icon" id="btn-center" title="Back to the centre"><svg class="i"><use href="#i-center"/></svg></button>
+      <button class="icon" id="btn-settings" title="Settings"><svg class="i"><use href="#i-gear"/></svg></button>
       <button class="icon" id="btn-more" title="More"><svg class="i"><use href="#i-more"/></svg></button>
     </div>
   </header>
@@ -57,8 +59,6 @@
         .person{cursor:pointer}
         .card{fill:#fff;stroke:#e2ddd2;stroke-width:1}
         .person:hover .card{stroke:#c3bba9;filter:drop-shadow(0 3px 8px rgba(38,35,30,.10))}
-        .pencil{fill:#9a9384;opacity:0;transition:opacity .12s;pointer-events:none}
-        .person:hover .pencil{opacity:1}
         .person.center .card{stroke:#d6b25e;stroke-width:1.8}
         .person.sel .card{stroke:#2f2a22;stroke-width:2}
         .av{fill:#a39d91}
@@ -87,6 +87,46 @@
         .add circle{fill:#2f2a22}
         .add:hover circle{fill:#4f7cac}
         .add path{stroke:#fff;stroke-width:2;stroke-linecap:round}
+        .link.fam{stroke-width:1.9;stroke-opacity:.8}
+        .open{opacity:0;transition:opacity .12s;cursor:pointer}
+        .open rect{fill:#fff;stroke:#d8d2c6}
+        .open path{fill:#7a7366}
+        .open .ring{fill:none;stroke:#7a7366;stroke-width:1.4}
+        .open .ib{stroke:#7a7366;stroke-width:1.6;stroke-linecap:round;fill:none}
+        .open:hover rect{fill:#2f2a22;stroke:#2f2a22}
+        .open:hover path,.open:hover .ib{fill:#fff;stroke:#fff}
+        .open:hover .ring{stroke:#fff}
+        .person:hover .open{opacity:1}
+        .hb{opacity:0;transition:opacity .12s;cursor:pointer;pointer-events:none}
+        .person.can-hide:hover .hb{opacity:1;pointer-events:auto}
+        .hb circle{fill:#fff;stroke:#bdb5a5}
+        .hb path{stroke:#6c675e;stroke-width:2;stroke-linecap:round}
+        .hb:hover circle{fill:#b4483c;stroke:#b4483c}
+        .hb:hover path{stroke:#fff}
+        .nm2{display:none}
+        .nm2 text{font:700 21px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#26231e}
+        .dead .nm2 text{fill:#57524a}
+        .c-dot{display:none}
+        .c-dot circle{fill:#9a9488}
+        .g-m .c-dot circle{fill:#5a84b0}
+        .g-f .c-dot circle{fill:#c46f88}
+        .dead .c-dot circle{fill:#c2bdb3}
+        .dead.g-m .c-dot circle{fill:#a9bdd3}
+        .dead.g-f .c-dot circle{fill:#dcb0bd}
+        .c-dot text{font:700 22px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#fff;text-anchor:middle}
+        .lod-mid .c-full{display:none}
+        .lod-mid .nm2{display:inline}
+        .lod-dot .c-full,.lod-dot .card,.lod-dot .av,.lod-dot .ini,.lod-dot .nm2{display:none}
+        .lod-dot .c-dot{display:inline}
+        .lod-dot.center .c-dot circle,.lod-dot.sel .c-dot circle{stroke:#d6b25e;stroke-width:4}
+        .anim .person{transition:transform .48s cubic-bezier(.33,1,.68,1),opacity .35s}
+        .person.enter{opacity:0}
+        #links,#ctls{transition:opacity .3s .25s}
+        #links.fresh,#ctls.fresh{opacity:0;transition:none}
+        .person,.link,.couple,.knot,.chip,.wed{transition:opacity .15s}
+        .dim .person:not(.hl){opacity:.22}
+        .dim .link:not(.hl),.dim .couple:not(.hl),.dim .knot:not(.hl),.dim .wed:not(.hl),.dim .chip{opacity:.12}
+        .dim .link.hl{stroke-width:2.6;stroke-opacity:1}
         .flash .card{animation:ft-flash 1.4s ease-out}
         @keyframes ft-flash{0%,40%{stroke:#d6b25e;stroke-width:5}100%{stroke-width:1}}
       </style>
@@ -107,6 +147,7 @@
   <div id="panel" class="overlay" hidden><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
   <div id="popover" class="popover" hidden></div>
   <div id="toast" class="toast" hidden></div>
+  <div id="tip" class="tip" hidden></div>
 
   <script src="assets/model.js"></script>
   <script src="assets/layout.js"></script>

@@ -11,7 +11,7 @@
     tree: null,
     editable: false,
     focus: null,
-    view: { down: {}, up: {} },
+    view: { down: {}, up: {}, hide: {} },
     selected: null,
     L: null,
     cam: { x: 0, y: 0, k: 1 },
@@ -22,6 +22,9 @@
     newPerson: null,
     newPersonSnap: null,
     version: null,
+    settings: null,
+    D: null,
+    rot: 0,
   };
 
   // ---------- helpers ----------
@@ -56,9 +59,10 @@
 
   // Full name on one or two lines, shrinking the text a little before ever cutting it.
   const NAME_SIZES = [13.5, 12.5, 11.5];
-  function nameLines(name, max) {
+  function nameLines(name, max, sizes) {
+    sizes = sizes || NAME_SIZES;
     const words = name.trim().split(/\s+/);
-    for (const size of NAME_SIZES) {
+    for (const size of sizes) {
       const font = `600 ${size}px ${FAMILY}`;
       if (measure(name, font) <= max) return { size, lines: [name] };
       let best = null;
@@ -69,7 +73,7 @@
       }
       if (best && best.w <= max) return { size, lines: best.lines };
     }
-    const size = NAME_SIZES[NAME_SIZES.length - 1], font = `600 ${size}px ${FAMILY}`;
+    const size = sizes[sizes.length - 1], font = `600 ${size}px ${FAMILY}`;
     let i = 1;
     while (i < words.length && measure(words.slice(0, i + 1).join(' '), font) <= max) i++;
     const first = fit(words.slice(0, i).join(' '), max, font);
@@ -89,7 +93,7 @@
   function knot(x, y, u) {
     const tip = STATUS[u.status || ''] + (state.editable ? ' — click to change' : '');
     const act = state.editable ? `data-act="couple" data-u="${u.id}"` : '';
-    return `<g class="knot${isEnded(u.status) ? ' ended' : ''}${state.editable ? ' editable' : ''}" ${act} transform="translate(${x},${y})"><title>${esc(tip)}</title><circle class="hit" r="12"/><circle class="dot" r="4.5"/></g>`;
+    return `<g class="knot${isEnded(u.status) ? ' ended' : ''}${state.editable ? ' editable' : ''}" ${state.editable ? act : `data-u="${u.id}"`} transform="translate(${Math.round(x * 10) / 10},${Math.round(y * 10) / 10})"><title>${esc(tip)}</title><circle class="hit" r="12"/><circle class="dot" r="4.5"/></g>`;
   }
 
   function yearsText(p) {
@@ -113,60 +117,95 @@
   function loadView() {
     try {
       const v = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
-      if (v && typeof v === 'object') state.view = { down: v.down || {}, up: v.up || {} };
+      if (v && typeof v === 'object') state.view = { down: v.down || {}, up: v.up || {}, hide: v.hide || {} };
     } catch (e) { /* storage unavailable */ }
+  }
+
+  // ---------- settings ----------
+  const SETTINGS_KEY = 'familytree.settings';
+  const DEFAULTS = { focus: true, radius: 2, sizes: true, detail: true, hover: true, colors: true, smartHide: true, circle: false, improved: true };
+  function loadSettings() {
+    let stored = null;
+    try { stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (e) { /* storage unavailable */ }
+    state.settings = Object.assign({}, DEFAULTS, stored && typeof stored === 'object' ? stored : {});
+  }
+  function saveSettings() {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch (e) { /* storage unavailable */ }
   }
 
   // ---------- camera ----------
   function applyCam() {
     const c = state.cam;
     vp.setAttribute('transform', `translate(${c.x},${c.y}) scale(${c.k})`);
+    scheduleLOD();
   }
   function stageSize() {
     const r = svg.getBoundingClientRect();
     return { w: r.width, h: r.height - 56, top: 56 };
   }
-  function centerOnPoint(x, y, k) {
+  function camFor(x, y, k) {
     const s = stageSize();
-    if (k) state.cam.k = k;
-    state.cam.x = s.w / 2 - x * state.cam.k;
-    state.cam.y = s.top + s.h / 2 - y * state.cam.k;
+    return { x: s.w / 2 - x * k, y: s.top + s.h / 2 - y * k, k };
+  }
+  function centerOnPoint(x, y, k) {
+    Object.assign(state.cam, camFor(x, y, k || state.cam.k));
     applyCam();
   }
+  const box = (id) => state.D && state.D.nodes[id];
   function centerOn(id) {
-    const n = state.L.nodes[id];
-    if (n) centerOnPoint(n.x + CARD_W / 2, n.y + CARD_H / 2);
+    const n = box(id);
+    if (n) centerOnPoint(n.x + n.w / 2, n.y + n.h / 2);
   }
   function ensureVisible(id) {
-    const n = state.L.nodes[id];
+    const n = box(id);
     if (!n) return;
     const s = stageSize(), c = state.cam;
-    const sx = n.x * c.k + c.x, sy = n.y * c.k + c.y;
-    const pad = 40;
-    if (sx < pad || sy < s.top + pad || sx + CARD_W * c.k > s.w - pad || sy + CARD_H * c.k > s.top + s.h - pad) centerOn(id);
+    const sx = n.x * c.k + c.x, sy = n.y * c.k + c.y, pad = 40;
+    if (sx < pad || sy < s.top + pad || sx + n.w * c.k > s.w - pad || sy + n.h * c.k > s.top + s.h - pad) centerOn(id);
   }
   function fitAll() {
-    const b = state.L.bounds, s = stageSize();
+    const b = state.D.bounds, s = stageSize();
     const w = b.maxX - b.minX + 80, h = b.maxY - b.minY + 80;
     const k = Math.min(1, s.w / w, s.h / h);
-    if (k < 0.7) {
-      centerOnPoint(state.L.center.x, state.L.center.y, 0.85);
-    } else {
-      centerOnPoint((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, k);
-    }
+    if (k < 0.62 && !state.settings.circle) centerOnPoint(state.D.center.x, state.D.center.y, 0.8);
+    else centerOnPoint((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, Math.max(0.12, k));
   }
   function zoomAt(px, py, f) {
     const c = state.cam;
-    const k = Math.min(2.5, Math.max(0.15, c.k * f));
+    const k = Math.min(2.5, Math.max(0.08, c.k * f));
     c.x = px - (px - c.x) * (k / c.k);
     c.y = py - (py - c.y) * (k / c.k);
     c.k = k;
     applyCam();
   }
+  // Smoothly move the camera; matches the cards' own transition so a kept card stays put.
+  let camAnim = null;
+  function animateCam(target, ms) {
+    cancelAnimationFrame(camAnim);
+    const from = Object.assign({}, state.cam), t0 = performance.now();
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / ms), e = ease(t);
+      state.cam.x = from.x + (target.x - from.x) * e;
+      state.cam.y = from.y + (target.y - from.y) * e;
+      state.cam.k = from.k + (target.k - from.k) * e;
+      applyCam();
+      if (t < 1) camAnim = requestAnimationFrame(step);
+    };
+    camAnim = requestAnimationFrame(step);
+  }
 
   // ---------- rendering ----------
-  function render(anchorId) {
-    const old = anchorId && state.L && state.L.nodes[anchorId];
+  const ANIM_MS = 480;
+  function layoutOpts() {
+    const S = state.settings;
+    return { radius: S.focus ? S.radius : null, sizes: S.sizes, improved: S.improved };
+  }
+  // opts.animate: cards glide from their old places; the anchor card stays where it is on screen.
+  function render(anchorId, opts) {
+    opts = opts || {};
+    const prevBoxes = state.D ? state.D.nodes : null;
+    const old = anchorId && box(anchorId);
     const before = old ? { x: old.x * state.cam.k + state.cam.x, y: old.y * state.cam.k + state.cam.y } : null;
     // The person or couple the tree is centred on may have been deleted or undone.
     const t = state.tree;
@@ -177,113 +216,278 @@
       const first = Object.keys(t.data.people)[0];
       state.focus = first ? { person: first } : state.focus;
     }
-    state.L = layout(state.tree, state.focus, state.view);
-    draw();
-    const now = anchorId && state.L.nodes[anchorId];
+    state.L = layout(state.tree, state.focus, state.view, layoutOpts());
+    draw(opts.animate ? prevBoxes : null);
+    const now = anchorId && box(anchorId);
     if (before && now) {
-      state.cam.x = before.x - now.x * state.cam.k;
-      state.cam.y = before.y - now.y * state.cam.k;
-      applyCam();
+      const target = { x: before.x - now.x * state.cam.k, y: before.y - now.y * state.cam.k, k: state.cam.k };
+      if (opts.animate) animateCam(target, ANIM_MS); else Object.assign(state.cam, target), applyCam();
     }
     updateChrome();
   }
 
-  function draw() {
-    const L = state.L, t = state.tree;
-    const links = [], nodes = [], ctls = [];
-    const childY = (u) => u.rowY + CARD_H + ROW_GAP;
-    const busY = (u) => u.busY;
+  // Where things go on screen: straight rows, or the circle (rows become rings, scroll rotates).
+  function projector(L) {
+    if (!state.settings.circle) return { circle: false, pt: (x, y) => [x, y] };
+    const b = L.bounds;
+    const x0 = b.minX - 80, span = Math.max(1, b.maxX - b.minX + 160);
+    const ARC = Math.PI * 2 * 0.94, RK = 1.5;
+    const R0 = span / ARC + 80, yMin = b.minY;
+    const base = Math.PI / 2 - ((L.center.x - x0) / span) * ARC;
+    const th = (x) => base + state.rot + ((x - x0) / span) * ARC;
+    const rr = (y) => R0 + (y - yMin) * RK;
+    return { circle: true, th, rr, pt: (x, y) => { const a = th(x), r = rr(y); return [r * Math.cos(a), r * Math.sin(a)]; } };
+  }
+  const f1 = (v) => Math.round(v * 10) / 10;
+  // Lines are described as straight segments in row coordinates; in the circle, horizontal
+  // segments become arcs and vertical ones become rays.
+  function pathOf(polys, pj) {
+    let d = '';
+    for (const pts of polys) {
+      let [x0, y0] = pts[0];
+      let [sx, sy] = pj.pt(x0, y0);
+      d += `M${f1(sx)},${f1(sy)}`;
+      for (let i = 1; i < pts.length; i++) {
+        const [x1, y1] = pts[i];
+        const [ex, ey] = pj.pt(x1, y1);
+        if (pj.circle && Math.abs(y1 - y0) < 0.01 && Math.abs(x1 - x0) > 0.01) {
+          const r = f1(pj.rr(y0)), dt = pj.th(x1) - pj.th(x0);
+          d += `A${r},${r} 0 ${Math.abs(dt) > Math.PI ? 1 : 0} ${dt > 0 ? 1 : 0} ${f1(ex)},${f1(ey)}`;
+        } else d += `L${f1(ex)},${f1(ey)}`;
+        x0 = x1; y0 = y1;
+      }
+    }
+    return d;
+  }
+  const PALETTE = ['#c0835a', '#5f8fb4', '#8a7bb8', '#4f9e86', '#c26f86', '#a8923a', '#4a9db3', '#9b7a5c'];
+  const trOf = (b) => `translate(${f1(b.x)}px,${f1(b.y)}px) scale(${b.s})`;
 
+  function draw(prevBoxes) {
+    const L = state.L, t = state.tree, S = state.settings;
+    const pj = projector(L);
+    const links = [], nodes = [], ctls = [];
+    const D = { nodes: {}, pj };
+    for (const [id, n] of Object.entries(L.nodes)) {
+      if (pj.circle) {
+        const c = pj.pt(n.x + n.w / 2, n.y + n.h / 2);
+        D.nodes[id] = { x: c[0] - n.w / 2, y: c[1] - n.h / 2, w: n.w, h: n.h, s: n.s };
+      } else D.nodes[id] = { x: n.x, y: n.y, w: n.w, h: n.h, s: n.s };
+    }
+    // One colour per family, neighbouring families in a row get different colours.
+    const famColor = {};
+    if (S.colors) {
+      L.unions.filter((u) => u.children.length).sort((a, b) => (a.rowY - b.rowY) || (a.x - b.x))
+        .forEach((u, i) => { famColor[u.id] = PALETTE[i % PALETTE.length]; });
+    }
+    const at = (x, y) => pj.pt(x, y);
     for (const u of L.unions) {
       const ended = isEnded(u.status) ? ' ended' : '';
+      const ua = `data-u="${u.id}"`;
       if (u.couple) {
         const [a, b] = u.couple;
-        const y = a.y + CARD_H / 2;
-        links.push(`<path class="couple${ended}" d="M${a.x + CARD_W},${y}H${b.x}"/>`);
+        const y = u.rowY + CARD_H / 2;
+        links.push(`<path class="couple${ended}" ${ua} d="${pathOf([[[a.x + a.w, y], [b.x, y]]], pj)}"/>`);
         const label = coupleLabel(u);
-        if (label) links.push(`<text class="wed${ended}" x="${(a.x + CARD_W + b.x) / 2}" y="${y - 9}">${esc(label)}</text>`);
-        ctls.push(knot((a.x + CARD_W + b.x) / 2, y, u));
+        if (label && !pj.circle) links.push(`<text class="wed${ended}" ${ua} x="${(a.x + a.w + b.x) / 2}" y="${y - 9}">${esc(label)}</text>`);
+        ctls.push(knot(...at((a.x + a.w + b.x) / 2, y), u));
       } else if (u.bracket) {
         const [a, b] = u.bracket;
-        const y = a.y + CARD_H;
-        links.push(`<path class="couple${ended}" d="M${a.x + CARD_W * 0.7},${y}V${y + u.depth}H${b.x + CARD_W * 0.3}V${y}"/>`);
-        ctls.push(knot(u.x, y + u.depth, u));
+        const yb = u.rowY + CARD_H + u.depth;
+        links.push(`<path class="couple${ended}" ${ua} d="${pathOf([[[a.x + a.w * 0.7, a.y + a.h], [a.x + a.w * 0.7, yb], [b.x + b.w * 0.3, yb], [b.x + b.w * 0.3, b.y + b.h]]], pj)}"/>`);
+        ctls.push(knot(...at(u.x, yb), u));
       }
-      const by = busY(u);
+      const by = u.busY;
       if (u.children.length) {
-        const xs = u.children.map((c) => L.nodes[c].x + CARD_W / 2);
-        let d = '';
-        if (u.partners.length) {
-          d += `M${u.x},${u.y + (u.couple || u.bracket ? 5 : 0)}V${by}`;
-          xs.push(u.x);
+        const kid = (c) => L.nodes[c];
+        const xs = u.children.map((c) => kid(c).x + kid(c).w / 2);
+        const startY = u.y + (u.couple || u.bracket ? 5 : 0);
+        const polys = [];
+        const only = u.children.length === 1 && u.partners.length ? kid(u.children[0]) : null;
+        if (only && Math.abs(only.x + only.w / 2 - u.x) < 24) {
+          polys.push([[u.x, startY], [u.x, only.y]]);
         } else {
-          d += `M${(Math.min(...xs) + Math.max(...xs)) / 2},${by - 16}V${by}`;
+          if (u.partners.length) { polys.push([[u.x, startY], [u.x, by]]); xs.push(u.x); }
+          else { const m = (Math.min(...xs) + Math.max(...xs)) / 2; polys.push([[m, by - 16], [m, by]]); }
+          polys.push([[Math.min(...xs), by], [Math.max(...xs), by]]);
+          for (const c of u.children) polys.push([[kid(c).x + kid(c).w / 2, by], [kid(c).x + kid(c).w / 2, kid(c).y]]);
         }
-        const only = u.children.length === 1 && u.partners.length ? L.nodes[u.children[0]] : null;
-        if (only && Math.abs(only.x + CARD_W / 2 - u.x) < 24) {
-          d = `M${u.x},${u.y + (u.couple || u.bracket ? 5 : 0)}V${childY(u)}`;
-        } else {
-          d += `M${Math.min(...xs)},${by}H${Math.max(...xs)}`;
-          for (const c of u.children) d += `M${L.nodes[c].x + CARD_W / 2},${by}V${childY(u)}`;
-        }
-        links.push(`<path class="link" d="${d}"/>`);
-        // Toggle to fold this family's children away (only when there is something to fold).
-        if (u.children.some((c) => L.reach[c] === 'child') && u.partners.length) {
-          ctls.push(ctl(u.x, by, 'up', `data-act="fold" data-u="${u.id}" data-for="${u.partners.join(' ')}"`, 'Fold away their children'));
+        const col = famColor[u.id];
+        links.push(`<path class="link${col ? ' fam' : ''}" ${ua}${col ? ` style="stroke:${col}"` : ''} d="${pathOf(polys, pj)}"/>`);
+        if (!S.smartHide && u.children.some((c) => L.reach[c] === 'child') && u.partners.length) {
+          ctls.push(ctl(...at(u.x, by), 'up', `data-act="fold" data-u="${u.id}" data-for="${u.partners.join(' ')}"`, 'Fold away their children'));
         }
       }
       if (u.collapsed && u.partners.length) {
-        links.push(`<path class="link" d="M${u.x},${u.y}V${by - 11}"/>`);
-        ctls.push(chip(u.x, by, '+' + u.hiddenCount, `data-act="unfold" data-u="${u.id}"`, `Show ${u.hiddenCount} hidden`));
+        links.push(`<path class="link" ${ua} d="${pathOf([[[u.x, u.y], [u.x, by - 11]]], pj)}"/>`);
+        const act = u.byFocus ? `data-act="focus-u" data-u="${u.id}"` : `data-act="unfold" data-u="${u.id}"`;
+        ctls.push(chip(...at(u.x, by), '+' + u.hiddenCount, act + ` ${ua}`, u.byFocus ? `Move the focus here to see ${u.hiddenCount} more` : `Show ${u.hiddenCount} hidden`));
       }
     }
     for (const c of L.upChips) {
+      const n = L.nodes[c.person], x = n.x + n.w / 2;
+      links.push(`<path class="link" d="${pathOf([[[x, n.y], [x, n.y - 18]]], pj)}"/>`);
+      const act = c.byFocus ? `data-act="focus-p" data-p="${c.person}"` : `data-act="show-up" data-p="${c.person}"`;
+      ctls.push(chip(...at(x, n.y - 29), '▲ ' + c.count, act, c.byFocus ? 'Move the focus here to see their parents' : `Show parents (${c.count})`));
+    }
+    for (const c of L.hideChips || []) {
       const n = L.nodes[c.person];
-      const x = n.x + CARD_W / 2;
-      links.push(`<path class="link" d="M${x},${n.y}V${n.y - 18}"/>`);
-      ctls.push(chip(x, n.y - 29, '▲ ' + c.count, `data-act="show-up" data-p="${c.person}"`, `Show parents (${c.count})`));
+      ctls.push(chip(...at(n.x + n.w / 2, n.y + n.h + 13), '+' + c.count, `data-act="unhide" data-p="${c.person}"`, `Show ${c.count} hidden`));
     }
 
     const selected = state.selected;
+    const animate = !!prevBoxes;
     for (const [id, n] of Object.entries(L.nodes)) {
-      const p = P(id);
+      const p = P(id), b = D.nodes[id], prev = prevBoxes && prevBoxes[id];
       const isDead = dead(id);
-      const cls = ['person', p.gender ? 'g-' + p.gender : '', isDead ? 'dead' : '', L.rootPartners.includes(id) && state.focus.union ? 'center' : '', id === selected ? 'sel' : ''].join(' ');
+      const cls = ['person', p.gender ? 'g-' + p.gender : '', isDead ? 'dead' : '', isFocused(id) ? 'center' : '',
+        id === selected ? 'sel' : '', animate && !prev ? 'enter' : ''].join(' ');
       const yrs = yearsText(p);
       const nl = nameLines(p.name || 'New person', CARD_W - 74);
-      let s = `<g class="${cls}" data-id="${id}" transform="translate(${n.x},${n.y})">`;
+      let s = `<g class="${cls}" data-id="${id}" style="transform:${trOf(prev || b)}">`;
       s += `<rect class="card" width="${CARD_W}" height="${CARD_H}" rx="12"/>`;
       s += `<circle class="av" cx="28" cy="${CARD_H / 2}" r="17"/><text class="ini" x="28" y="${CARD_H / 2 + 4.3}">${esc(initials(p.name))}</text>`;
       const lineH = nl.size + 3.5;
       const top = (CARD_H - nl.lines.length * lineH - (yrs ? 16 : 0)) / 2;
+      s += '<g class="c-full">';
       nl.lines.forEach((line, i) => {
         s += `<text class="nm${p.name ? '' : ' empty'}" x="54" y="${top + nl.size + i * lineH}" style="font-size:${nl.size}px">${esc(line)}</text>`;
       });
       if (yrs) s += `<text class="yr" x="54" y="${top + nl.lines.length * lineH + 13}">${esc(yrs)}</text>`;
+      s += '</g>';
+      // Zoomed out: the full name, big, on up to two lines.
+      const big = nameLines(p.name || 'New person', CARD_W - 62, [21, 19, 17]);
+      const bh = big.size + 2, btop = (CARD_H - big.lines.length * bh) / 2;
+      s += `<g class="nm2">${big.lines.map((line, i) => `<text x="52" y="${btop + big.size * 0.85 + i * bh}" style="font-size:${big.size}px">${esc(line)}</text>`).join('')}</g>`;
+      s += `<g class="c-dot"><circle cx="${CARD_W / 2}" cy="${CARD_H / 2}" r="30"/><text x="${CARD_W / 2}" y="${CARD_H / 2 + 7}">${esc(initials(p.name))}</text></g>`;
+      s += `<g class="open" data-act="open" data-p="${id}" transform="translate(${CARD_W - 24},6)"><title>${state.editable ? 'Edit' : 'Details'}</title><rect width="18" height="18" rx="4"/>`;
+      s += state.editable
+        ? `<path transform="translate(1,1)" d="M2 11.5V14h2.5l7.4-7.4-2.5-2.5L2 11.5zM13.7 4.8a.7.7 0 0 0 0-1L12.2 2.3a.7.7 0 0 0-1 0L10 3.5 12.5 6l1.2-1.2z"/>`
+        : `<circle cx="9" cy="9" r="7" class="ring"/><path d="M9 8v5M9 5.2v.1" class="ib"/>`;
+      s += '</g>';
+      if (S.smartHide && !L.rootPartners.includes(id)) {
+        s += `<g class="hb" data-act="hide-branch" data-p="${id}" transform="translate(0,${CARD_H / 2})"><title>Hide everyone connected only through ${esc(t.firstName(id))}</title><circle r="11"/><path d="M-4.5 0H4.5"/></g>`;
+      }
       if (state.editable) {
-        s += `<path class="pencil" transform="translate(${CARD_W - 22},8)" d="M2 11.5V14h2.5l7.4-7.4-2.5-2.5L2 11.5zM13.7 4.8a.7.7 0 0 0 0-1L12.2 2.3a.7.7 0 0 0-1 0L10 3.5 12.5 6l1.2-1.2z"/>`;
         s += `<g class="add" data-act="add" data-p="${id}" transform="translate(${CARD_W},${CARD_H / 2})"><title>Add a relative</title><circle r="11"/><path d="M-4.5 0H4.5M0 -4.5V4.5"/></g>`;
       }
       s += '</g>';
       nodes.push(s);
-      // Toggle to fold this person's parents away.
+      // Old-style toggle to fold this person's parents away (when the "−" buttons are off).
       const pu = t.parentUnion(id);
-      if (pu && ['root', 'ancestor', 'spouse'].includes(L.reach[id]) && !L.upChips.some((c) => c.person === id) && L.unions.some((u) => u.id === pu)) {
-        ctls.push(ctl(n.x + CARD_W / 2, n.y - 16, 'down', `data-act="hide-up" data-p="${id}" data-for="${id}"`, 'Fold away their parents'));
+      if (!S.smartHide && pu && ['root', 'ancestor', 'spouse'].includes(L.reach[id]) && !L.upChips.some((c) => c.person === id) && L.unions.some((u) => u.id === pu)) {
+        ctls.push(ctl(...at(n.x + n.w / 2, n.y - 16), 'down', `data-act="hide-up" data-p="${id}" data-for="${id}"`, 'Fold away their parents'));
       }
     }
+    svg.classList.toggle('anim', animate);
     $('#links').innerHTML = links.join('');
     $('#nodes').innerHTML = nodes.join('');
     $('#ctls').innerHTML = ctls.join('');
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const b of Object.values(D.nodes)) {
+      minX = Math.min(minX, b.x); maxX = Math.max(maxX, b.x + b.w);
+      minY = Math.min(minY, b.y); maxY = Math.max(maxY, b.y + b.h);
+    }
+    D.bounds = { minX, maxX, minY: minY - 40, maxY: maxY + 40 };
+    const rb = L.rootPartners.map(box2(D)).filter(Boolean);
+    D.center = rb.length ? { x: rb.reduce((s, b) => s + b.x + b.w / 2, 0) / rb.length, y: rb[0].y + rb[0].h / 2 } : { x: 0, y: 0 };
+    state.D = D;
+    lodState.clear();
+    updateLOD();
+
+    if (animate) {
+      $('#links').classList.add('fresh'); $('#ctls').classList.add('fresh');
+      // Move every card to its new place; also run by a timer in case frames are paused.
+      const finish = () => {
+        if (state.D !== D) return; // redrawn meanwhile; the newer drawing is already in place
+        for (const el of $('#nodes').children) {
+          const b = D.nodes[el.dataset.id];
+          if (b) el.style.transform = trOf(b);
+          el.classList.remove('enter');
+        }
+        $('#links').classList.remove('fresh'); $('#ctls').classList.remove('fresh');
+      };
+      requestAnimationFrame(() => requestAnimationFrame(finish));
+      clearTimeout(draw.t0); clearTimeout(draw.t);
+      draw.t0 = setTimeout(finish, 60);
+      draw.t = setTimeout(() => svg.classList.remove('anim'), ANIM_MS + 120);
+    }
+  }
+  const box2 = (D) => (id) => D.nodes[id];
+  const isFocused = (id) => (state.focus.person ? state.focus.person === id : state.L && state.L.rootPartners.includes(id));
+
+  // ---------- less detail when zoomed out ----------
+  const lodState = new Map();
+  let lodFrame = 0;
+  function scheduleLOD() {
+    if (lodFrame) return;
+    lodFrame = requestAnimationFrame(() => { lodFrame = 0; updateLOD(); });
+  }
+  function updateLOD() {
+    if (!state.D) return;
+    const on = state.settings.detail, k = state.cam.k;
+    for (const el of $('#nodes').children) {
+      const b = state.D.nodes[el.dataset.id];
+      const e = k * (b ? b.s : 1);
+      const lvl = !on ? '' : e >= 0.5 ? '' : e >= 0.27 ? 'lod-mid' : 'lod-dot';
+      if (lodState.get(el) === lvl) continue;
+      el.classList.remove('lod-mid', 'lod-dot');
+      if (lvl) el.classList.add(lvl);
+      lodState.set(el, lvl);
+    }
+  }
+
+  // ---------- hover: highlight a person's closest family ----------
+  function highlight(id) {
+    clearHighlight();
+    const t = state.tree;
+    const people = new Set([id, ...t.parents(id), ...t.childrenOf(id), ...t.siblingsOf(id), ...t.partnersOf(id).map((o) => o.id)]);
+    const unions = new Set([...t.unionsOf(id), t.parentUnion(id)].filter(Boolean));
+    for (const el of $('#nodes').children) if (people.has(el.dataset.id)) el.classList.add('hl');
+    for (const el of svg.querySelectorAll('[data-u]')) if (unions.has(el.dataset.u)) el.classList.add('hl');
+    svg.classList.add('dim');
+  }
+  function clearHighlight() {
+    svg.classList.remove('dim');
+    for (const el of svg.querySelectorAll('.hl')) el.classList.remove('hl');
+  }
+  // How many people would disappear if this person's branch were hidden.
+  function branchSize(id) {
+    const t = state.tree, vis = state.L.nodes;
+    const starts = state.L.rootPartners.filter((r) => r !== id && vis[r]);
+    const seen = new Set(starts), stack = starts.slice();
+    while (stack.length) {
+      const p = stack.pop();
+      const next = t.parents(p).concat(t.siblingsOf(p), t.partnersOf(p).map((o) => o.id), t.childrenOf(p));
+      for (const n of next) if (n !== id && vis[n] && !seen.has(n)) { seen.add(n); stack.push(n); }
+    }
+    return Object.keys(vis).filter((p) => p !== id && !seen.has(p)).length;
+  }
+  function showTip(id, ev) {
+    const tip = $('#tip'), p = P(id);
+    if (!p) return;
+    const yrs = yearsText(p), rel = state.tree.relationLabel(id);
+    tip.innerHTML = `<b>${esc(p.name || 'New person')}</b>${yrs ? `<span>${esc(yrs)}</span>` : ''}${rel ? `<span>${esc(rel)}</span>` : ''}`;
+    tip.hidden = false;
+    tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, ev.clientX + 14) + 'px';
+    tip.style.top = Math.min(window.innerHeight - tip.offsetHeight - 8, ev.clientY + 14) + 'px';
+  }
+
+  // ---------- focus ----------
+  function setFocus(id) {
+    if (!P(id)) return;
+    state.focus = { person: id };
+    closePopover();
+    render(id, { animate: true });
   }
 
   function ctl(x, y, kind, attrs, title) {
     const chevron = kind === 'up' ? 'M-3.5 1.8L0 -1.8L3.5 1.8' : 'M-3.5 -1.8L0 1.8L3.5 -1.8';
-    return `<g class="ctl" ${attrs} transform="translate(${x},${y})"><title>${esc(title)}</title><circle r="9"/><path d="${chevron}"/></g>`;
+    return `<g class="ctl" ${attrs} transform="translate(${f1(x)},${f1(y)})"><title>${esc(title)}</title><circle r="9"/><path d="${chevron}"/></g>`;
   }
   function chip(x, y, label, attrs, title) {
     const w = Math.max(34, measure(label, '600 11px ' + FAMILY) + 18);
-    return `<g class="chip" ${attrs} transform="translate(${x},${y})"><title>${esc(title)}</title><rect x="${-w / 2}" y="-11" width="${w}" height="22" rx="11"/><text y="4">${esc(label)}</text></g>`;
+    return `<g class="chip" ${attrs} transform="translate(${f1(x)},${f1(y)})"><title>${esc(title)}</title><rect x="${-w / 2}" y="-11" width="${w}" height="22" rx="11"/><text y="4">${esc(label)}</text></g>`;
   }
 
   function updateChrome() {
@@ -566,6 +770,7 @@
     saveView();
     state.newPerson = nid;
     state.newPersonSnap = state.history[state.history.length - 1];
+    if (!state.L.nodes[nid]) { state.focus = { person: pid }; render(pid); }
     select(nid, { anchor: pid, reveal: true, focusName: true });
   }
 
@@ -781,6 +986,25 @@
     openPopover(h, rect, 'wide');
   }
 
+  function settingsMenu(rect) {
+    const S = state.settings;
+    const row = (key, label, hint) => `<label class="set"><span class="txt"><b>${label}</b><small>${hint}</small></span>
+      <input type="checkbox" data-set="${key}" ${S[key] ? 'checked' : ''}><span class="sw"></span></label>`;
+    let h = '<div class="hd">Settings</div>';
+    h += row('focus', 'Focus mode', 'Show the family around one person. Click a card to move there; click it again to open it.');
+    if (S.focus) {
+      h += `<div class="seg radius">${[1, 2, 3].map((r) => `<button data-radius="${r}" class="${S.radius === r ? 'on' : ''}">${r} step${r > 1 ? 's' : ''}</button>`).join('')}</div>`;
+    }
+    h += row('sizes', 'Smaller further away', 'Cards shrink the more distant the relative.');
+    h += row('detail', 'Less detail when zoomed out', 'First names, then just initials, as you zoom out.');
+    h += row('hover', 'Highlight on hover', 'Point at someone to light up their closest family.');
+    h += row('colors', 'Colour each family', 'Every family\u2019s lines get their own colour.');
+    h += row('smartHide', 'Hide-branch buttons (−)', 'Hide everyone who is only connected through one person.');
+    h += row('improved', 'Fewer crossing lines', 'Rearranges families to reduce crossings.');
+    h += row('circle', 'Circle layout', 'The tree as rings; scroll to turn it.');
+    openPopover(h, rect, 'wide settings');
+  }
+
   function moreMenu(rect) {
     let h = '';
     h += `<button class="item" data-menu="fit">Show the whole tree</button>`;
@@ -820,7 +1044,12 @@
     $('#search').value = '';
     $('#search').blur();
     closePopover();
-    if (!state.L.nodes[id]) {
+    if (state.settings.focus) {
+      state.focus = { person: id };
+      delete state.view.hide[id];
+      render();
+      centerOn(id);
+    } else if (!state.L.nodes[id]) {
       // Unfold the branches on the way to them.
       const t = state.tree, seen = new Set(), stack = [id];
       while (stack.length) {
@@ -830,6 +1059,7 @@
         const pu = t.parentUnion(p);
         if (pu) { state.view.down[pu] = false; t.union(pu).partners.forEach((q) => { state.view.up[q] = false; stack.push(q); }); }
         state.view.up[p] = false;
+        delete state.view.hide[p];
         for (const { id: q } of t.partnersOf(p)) stack.push(q);
       }
       saveView();
@@ -854,7 +1084,7 @@
   const fileBase = () => (state.tree.data.title || 'family-tree').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'family-tree';
 
   function exportPNG() {
-    const b = state.L.bounds, pad = 48;
+    const b = state.D.bounds, pad = 48;
     const w = b.maxX - b.minX + pad * 2, h = b.maxY - b.minY + pad * 2;
     const clone = vp.cloneNode(true);
     clone.removeAttribute('transform');
@@ -880,7 +1110,7 @@
   function bind() {
     // Pan & zoom
     const pointers = new Map();
-    let drag = null, moved = false, pinch = null;
+    let drag = null, moved = false, pinch = null, rotFrame = 0;
     svg.addEventListener('pointerdown', (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1) {
@@ -920,6 +1150,12 @@
     svg.addEventListener('wheel', (e) => {
       e.preventDefault();
       const mouseWheel = e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
+      if (state.settings.circle && !e.ctrlKey && !e.metaKey) {
+        // In the circle, scrolling turns the wheel.
+        state.rot += (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * (mouseWheel ? 0.0012 : 0.003);
+        if (!rotFrame) rotFrame = requestAnimationFrame(() => { rotFrame = 0; draw(null); });
+        return;
+      }
       if (e.ctrlKey || e.metaKey || mouseWheel) {
         const r = svg.getBoundingClientRect();
         zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * (mouseWheel ? 0.0015 : 0.01)));
@@ -931,11 +1167,20 @@
     }, { passive: false });
 
     // Hover: reveal fold controls belonging to the hovered person.
+    let hovered = null;
     svg.addEventListener('pointerover', (e) => {
       const g = e.target.closest('.person');
+      const id = g ? g.dataset.id : null;
+      if (id === hovered) return;
+      hovered = id;
       document.querySelectorAll('.ctl.show').forEach((c) => c.classList.remove('show'));
-      if (g) document.querySelectorAll(`.ctl[data-for~="${g.dataset.id}"]`).forEach((c) => c.classList.add('show'));
+      if (!g) { clearHighlight(); $('#tip').hidden = true; return; }
+      document.querySelectorAll(`.ctl[data-for~="${id}"]`).forEach((c) => c.classList.add('show'));
+      if (state.settings.hover && !drag) highlight(id);
+      if (state.settings.smartHide) g.classList.toggle('can-hide', branchSize(id) > 0);
+      if (g.classList.contains('lod-mid') || g.classList.contains('lod-dot')) showTip(id, e);
     });
+    svg.addEventListener('pointerleave', () => { hovered = null; clearHighlight(); $('#tip').hidden = true; });
 
     svg.addEventListener('click', (e) => {
       if (moved) { moved = false; return; }
@@ -946,13 +1191,28 @@
         if (a === 'couple') { coupleMenu(act.dataset.u, act.getBoundingClientRect()); return; }
         if (a === 'fold') { state.view.down[act.dataset.u] = true; saveView(); render(state.selected || state.tree.union(act.dataset.u).partners[0]); return; }
         if (a === 'unfold') { state.view.down[act.dataset.u] = false; saveView(); render(state.tree.union(act.dataset.u).partners[0]); return; }
-        if (a === 'show-up') { state.view.up[act.dataset.p] = false; saveView(); render(act.dataset.p); return; }
-        if (a === 'hide-up') { state.view.up[act.dataset.p] = true; saveView(); render(act.dataset.p); return; }
+        if (a === 'show-up') { state.view.up[act.dataset.p] = false; saveView(); render(act.dataset.p, { animate: true }); return; }
+        if (a === 'hide-up') { state.view.up[act.dataset.p] = true; saveView(); render(act.dataset.p, { animate: true }); return; }
+        if (a === 'open') { select(act.dataset.p); return; }
+        if (a === 'hide-branch') { state.view.hide[act.dataset.p] = true; saveView(); render(act.dataset.p, { animate: true }); return; }
+        if (a === 'unhide') { delete state.view.hide[act.dataset.p]; saveView(); render(act.dataset.p, { animate: true }); return; }
+        if (a === 'focus-p') { setFocus(act.dataset.p); return; }
+        if (a === 'focus-u') { const u = state.tree.union(act.dataset.u); if (u) setFocus(u.partners.find((x) => state.L.nodes[x]) || u.partners[0]); return; }
       }
       const g = e.target.closest('.person');
-      if (g) { select(g.dataset.id); return; }
+      if (g) {
+        // Focus mode: a click moves the focus there; clicking the person in focus opens them.
+        if (state.settings.focus && !isFocused(g.dataset.id)) setFocus(g.dataset.id);
+        else select(g.dataset.id);
+        return;
+      }
       closePopover();
       if (state.selected) select(null);
+    });
+
+    svg.addEventListener('dblclick', (e) => {
+      const g = e.target.closest('.person');
+      if (g && !e.target.closest('[data-act]')) select(g.dataset.id);
     });
 
     // Panel
@@ -989,10 +1249,8 @@
       if (act.dataset.act === 'delete') deletePerson(state.selected);
       if (act.dataset.act === 'focus') {
         const id = state.selected;
-        state.focus = { person: id };
-        render();
-        renderPanel();
-        centerOn(id);
+        select(null);
+        setFocus(id);
       }
     });
     panel.addEventListener('input', (e) => {
@@ -1051,7 +1309,25 @@
     });
 
     // Popover
+    $('#popover').addEventListener('change', (e) => {
+      const key = e.target.dataset && e.target.dataset.set;
+      if (!key) return;
+      state.settings[key] = e.target.checked;
+      saveSettings();
+      const keep = state.selected || (state.focus.person) || state.tree.rootPartners()[0];
+      render(keep, { animate: true });
+      if (key === 'circle') { state.rot = 0; render(); fitAll(); }
+      settingsMenu($('#btn-settings').getBoundingClientRect());
+    });
     $('#popover').addEventListener('click', (e) => {
+      const rb = e.target.closest('[data-radius]');
+      if (rb) {
+        state.settings.radius = +rb.dataset.radius;
+        saveSettings();
+        render(state.focus.person || state.tree.rootPartners()[0], { animate: true });
+        settingsMenu($('#btn-settings').getBoundingClientRect());
+        return;
+      }
       const st = e.target.closest('[data-status]');
       if (st) {
         closePopover();
@@ -1071,9 +1347,9 @@
         const up = {}, down = {};
         for (const id of Object.keys(state.tree.data.people)) up[id] = false;
         for (const id of Object.keys(state.tree.data.unions)) down[id] = false;
-        state.view = { down, up };
+        state.view = { down, up, hide: {} };
         saveView();
-        render();
+        render(null, { animate: true });
         fitAll();
       }
       if (k === 'png') exportPNG();
@@ -1084,13 +1360,15 @@
     // Top bar
     $('#btn-dates').addEventListener('click', (e) => datesMenu(e.currentTarget.getBoundingClientRect()));
     $('#btn-more').addEventListener('click', (e) => moreMenu(e.currentTarget.getBoundingClientRect()));
-    $('#btn-center').addEventListener('click', () => centerOnPoint(state.L.center.x, state.L.center.y));
+    $('#btn-center').addEventListener('click', () => { const c = state.D.center; animateCam(camFor(c.x, c.y, state.cam.k), 400); });
     $('#back-btn').addEventListener('click', () => {
+      const keep = state.L.rootPartners.find((r) => state.tree.rootPartners().includes(r)) || state.tree.rootPartners()[0];
       state.focus = { union: state.tree.data.root };
-      render();
+      render(keep, { animate: true });
       renderPanel();
-      centerOnPoint(state.L.center.x, state.L.center.y);
+      setTimeout(() => { const c = state.D.center; animateCam(camFor(c.x, c.y, state.cam.k), 400); }, ANIM_MS);
     });
+    $('#btn-settings').addEventListener('click', (e) => settingsMenu(e.currentTarget.getBoundingClientRect()));
     $('#zoom-in').addEventListener('click', () => { const s = stageSize(); zoomAt(s.w / 2, s.top + s.h / 2, 1.25); });
     $('#zoom-out').addEventListener('click', () => { const s = stageSize(); zoomAt(s.w / 2, s.top + s.h / 2, 0.8); });
     $('#undo').addEventListener('click', undo);
@@ -1118,7 +1396,7 @@
 
     document.addEventListener('pointerdown', (e) => {
       const pop = $('#popover');
-      if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('[data-act="add"], [data-act="couple"], #btn-dates, #btn-more, [data-add]')) closePopover();
+      if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('[data-act="add"], [data-act="couple"], #btn-dates, #btn-more, #btn-settings, [data-add]')) closePopover();
     });
     document.addEventListener('keydown', (e) => {
       const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
@@ -1177,6 +1455,7 @@
     state.tree = new Tree(data);
     state.focus = { union: data.root };
     loadView();
+    loadSettings();
     bind();
     render();
     fitAll();
