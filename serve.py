@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import threading
+import urllib.request
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -187,6 +188,17 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true", help="don't open the browser")
     args = ap.parse_args()
+    # Already running (e.g. start.command double-clicked twice)? Just open it again.
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{args.port}/api/status", timeout=0.5) as r:
+            if json.load(r).get("edit"):
+                url = f"http://localhost:{args.port}/"
+                print(f"The family tree is already running at {url}")
+                if not args.no_open:
+                    webbrowser.open(url)
+                return
+    except (OSError, ValueError):
+        pass
     server = None
     for port in range(args.port, args.port + 20):
         try:

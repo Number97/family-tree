@@ -50,7 +50,9 @@
         .wed{font:600 10px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;fill:#a59e8f;text-anchor:middle}
         .person{cursor:pointer}
         .card{fill:#fff;stroke:#e2ddd2;stroke-width:1}
-        .person:hover .card{stroke:#c3bba9}
+        .person:hover .card{stroke:#c3bba9;filter:drop-shadow(0 3px 8px rgba(38,35,30,.10))}
+        .pencil{fill:#9a9384;opacity:0;transition:opacity .12s;pointer-events:none}
+        .person:hover .pencil{opacity:1}
         .person.center .card{stroke:#d6b25e;stroke-width:1.8}
         .person.sel .card{stroke:#2f2a22;stroke-width:2}
         .av{fill:#9a9488}
@@ -96,7 +98,7 @@
     <div class="message" id="message" hidden></div>
   </main>
 
-  <aside id="panel" hidden></aside>
+  <div id="panel" class="overlay" hidden><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
   <div id="popover" class="popover" hidden></div>
   <div id="toast" class="toast" hidden></div>
 

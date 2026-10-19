@@ -84,9 +84,7 @@
   }
   function stageSize() {
     const r = svg.getBoundingClientRect();
-    const panel = !$('#panel').hidden && window.innerWidth > 720 ? 352 : 0;
-    const sheet = !$('#panel').hidden && window.innerWidth <= 720 ? $('#panel').offsetHeight : 0;
-    return { w: r.width - panel, h: r.height - 56 - sheet, top: 56 };
+    return { w: r.width, h: r.height - 56, top: 56 };
   }
   function centerOnPoint(x, y, k) {
     const s = stageSize();
@@ -204,6 +202,7 @@
       if (yrs) s += `<text class="yr" x="54" y="43">${esc(yrs)}</text>`;
       if (isDead) s += `<text class="cross" x="${CARD_W - 16}" y="${yrs ? 43 : 37}">†</text>`;
       if (state.editable) {
+        s += `<path class="pencil" transform="translate(${CARD_W - 22},8)" d="M2 11.5V14h2.5l7.4-7.4-2.5-2.5L2 11.5zM13.7 4.8a.7.7 0 0 0 0-1L12.2 2.3a.7.7 0 0 0-1 0L10 3.5 12.5 6l1.2-1.2z"/>`;
         s += `<g class="add" data-act="add" data-p="${id}" transform="translate(${CARD_W},${CARD_H / 2})"><title>Add a relative</title><circle r="11"/><path d="M-4.5 0H4.5M0 -4.5V4.5"/></g>`;
       }
       s += '</g>';
@@ -257,12 +256,12 @@
   }
 
   function personLink(id, extra) {
-    return `<div class="who"><a data-go="${id}">${esc(nameOf(id))}</a>${extra ? ' ' + extra : ''}</div>`;
+    return `<span class="who"><a data-go="${id}">${esc(nameOf(id))}</a>${extra ? ' ' + extra : ''}</span>`;
   }
 
   function renderPanel() {
-    const id = state.selected, el = $('#panel');
-    if (!id) { el.hidden = true; el.innerHTML = ''; return; }
+    const id = state.selected, el = $('#modal');
+    if (!id) { $('#panel').hidden = true; el.innerHTML = ''; return; }
     const t = state.tree, p = P(id), isDead = dead(id);
     const side = t.side(id);
     const rel = t.relationLabel(id);
@@ -274,10 +273,12 @@
     else h += facts(p);
 
     // Relationships
+    const group = (label, ids, hint) => ids.length
+      ? `<h3>${label}</h3><div class="list">${ids.map((x) => personLink(x, hint ? hint(x) : '')).join('')}</div>` : '';
     h += '<div class="rels">';
     const partners = t.partnersOf(id);
     if (partners.length) {
-      h += `<h3>${partners.length > 1 ? 'Partners' : 'Partner'}</h3>`;
+      h += `<h3>${partners.length > 1 ? 'Partners' : 'Partner'}</h3><div>`;
       for (const { id: q, union } of partners) {
         const u = t.union(union);
         if (state.editable) {
@@ -294,13 +295,11 @@
           h += personLink(q, since ? `<span class="muted">${esc(since)}</span>` : '');
         }
       }
+      h += '</div>';
     }
-    const parents = t.parents(id);
-    if (parents.length) h += '<h3>Parents</h3>' + parents.map((x) => personLink(x)).join('');
-    const kids = t.childrenOf(id);
-    if (kids.length) h += '<h3>Children</h3>' + kids.map((x) => personLink(x, ageHint(x))).join('');
-    const sibs = t.siblingsOf(id);
-    if (sibs.length) h += '<h3>Siblings</h3>' + sibs.map((x) => personLink(x, ageHint(x))).join('');
+    h += group('Parents', t.parents(id));
+    h += group('Children', t.childrenOf(id), ageHint);
+    h += group('Siblings', t.siblingsOf(id), ageHint);
     h += '</div>';
 
     if (state.editable) {
@@ -312,11 +311,13 @@
         <button class="btn" data-add="sibling">Sibling</button></div>`;
     }
     h += '<div class="p-actions">';
-    if (!(state.focus.person === id)) h += `<button class="btn" data-act="focus">Centre the tree here</button>`;
     if (state.editable && !t.rootPartners().includes(id)) h += `<button class="btn danger" data-act="delete">Delete</button>`;
+    h += '<span class="spacer"></span>';
+    if (!(state.focus.person === id)) h += `<button class="btn" data-act="focus">Centre the tree here</button>`;
+    h += `<button class="btn primary" data-act="close">${state.editable ? 'Done' : 'Close'}</button>`;
     h += '</div>';
     el.innerHTML = h;
-    el.hidden = false;
+    $('#panel').hidden = false;
   }
 
   function ageHint(id) {
@@ -346,11 +347,11 @@
     const deathSet = !!p.death;
     let h = '<div class="form">';
     h += `<label>Full name<input type="text" data-f="name" value="${esc(p.name)}" placeholder="First and last name"></label>`;
-    h += `<label>Birth name <span class="hint">· if different, e.g. maiden name</span><input type="text" data-f="birthName" value="${esc(p.birthName || '')}"></label>`;
+    h += `<div class="row2"><label>Birth name <span class="hint">· if different</span><input type="text" data-f="birthName" value="${esc(p.birthName || '')}" placeholder="e.g. maiden name"></label>`;
     h += `<label>Gender<div class="seg" data-f="gender">
       <button data-v="m" class="${g === 'm' ? 'on' : ''}">Male</button>
       <button data-v="f" class="${g === 'f' ? 'on' : ''}">Female</button>
-      <button data-v="" class="${!g ? 'on' : ''}">—</button></div></label>`;
+      <button data-v="" class="${!g ? 'on' : ''}">—</button></div></label></div>`;
     h += `<div class="row2"><label>Born<input type="text" data-date="birth" value="${esc(formatDate(p.birth))}" placeholder="1952 or 14.03.1952"></label>`;
     h += `<label>Died<input type="text" data-date="death" value="${esc(formatDate(p.death))}" placeholder="year or date"></label></div>`;
     h += `<label class="check"><input type="checkbox" data-f="deceased" ${p.deceased || deathSet ? 'checked' : ''} ${deathSet ? 'disabled' : ''}> Passed away</label>`;
@@ -748,6 +749,7 @@
     // Panel
     const panel = $('#panel');
     panel.addEventListener('click', (e) => {
+      if (e.target === panel) { select(null); return; }
       const go = e.target.closest('[data-go]');
       if (go) { e.preventDefault(); goTo(go.dataset.go); return; }
       const add = e.target.closest('[data-add]');
